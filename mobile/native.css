@@ -1,0 +1,4 @@
+#native-feedback:empty { display: none; }
+#native-feedback { position: fixed; top: calc(8px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px))); left: 12px; right: 12px; z-index: 100; background: #173f31; color: #fff; border-radius: 12px; padding: 14px 16px; box-shadow: 0 4px 20px #0003; font: 600 14px/1.5 system-ui, sans-serif; }
+#native-feedback[data-error="true"] { background: #792b28; }
+#native-feedback button { border: 1px solid currentColor; color: inherit; background: transparent; margin-left: 12px; min-width: 44px; min-height: 44px; border-radius: 8px; }

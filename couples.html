@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#13342f">
+  <meta name="description" content="Bản demo không gian tài chính chung dành cho hai người, chỉ dùng dữ liệu giả lập.">
+  <title>Mạch tiền · Không gian hai người</title>
+  <link rel="stylesheet" href="./couples.css">
+</head>
+<body>
+  <a class="skip-link" href="#workspace">Đến nội dung chính</a>
+  <div class="shell">
+    <aside class="sidebar" aria-label="Điều hướng không gian hai người">
+      <a class="brand" href="./index.html"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span><strong>Mạch tiền</strong><small>Không gian hai người</small></span></a>
+      <div class="sidebar-label">CÙNG NHAU, TỪNG BƯỚC</div>
+      <nav class="nav" aria-label="Các bước quản lý sổ chung">
+        <button type="button" data-view="space" class="nav-link active" aria-current="page"><span class="nav-number">01</span>Không gian chung</button>
+        <button type="button" data-view="agreement" class="nav-link"><span class="nav-number">02</span>Thỏa thuận tháng</button>
+        <button type="button" data-view="ledger" class="nav-link"><span class="nav-number">03</span>Sổ chung</button>
+        <button type="button" data-view="plans" class="nav-link"><span class="nav-number">04</span>Kế hoạch chung</button>
+        <button type="button" data-view="close" class="nav-link"><span class="nav-number">05</span>Chốt tháng</button>
+      </nav>
+      <div class="sidebar-bottom"><p>Phần chung vừa đủ.<br>Khoảng riêng luôn rõ.</p><a href="./index.html">← Về không gian cá nhân</a><small>PROTOTYPE · CHỈ DỮ LIỆU GIẢ</small></div>
+    </aside>
+    <div class="main-column">
+      <header class="topbar">
+        <div><p class="eyebrow">MẠCH TIỀN / HAI NGƯỜI</p><h1 id="page-title">Không gian chung</h1></div>
+        <div class="topbar-controls">
+          <label for="actor-select">Danh tính demo<select id="actor-select"><option value="A">Người A</option><option value="B">Người B</option></select></label>
+          <label for="month-select">Tháng xem<input id="month-select" type="month" min="1900-01" max="9999-11" required></label>
+        </div>
+      </header>
+      <div class="demo-warning" role="note"><span class="warning-symbol" aria-hidden="true">!</span><div><strong>Chỉ là bản mô phỏng trên cùng trình duyệt</strong><p>Chuyển Người A/B không phải đăng nhập và không bảo vệ riêng tư giữa hai người. Không nhập dữ liệu tài chính thật. Dữ liệu demo chỉ nằm trong bộ nhớ và mất khi tải lại trang.</p></div></div>
+      <div id="status-message" class="status-message" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+      <main id="workspace" class="workspace" tabindex="-1"><div class="card empty"><h2>Đang mở không gian demo…</h2><p>Nếu nội dung không tải, kiểm tra máy chủ local và bật JavaScript.</p></div></main>
+      <footer class="footer">Số dư trong sổ là số đã ghi nhận, không phải số dư ngân hàng · VND · <a href="./index.html">Sổ cá nhân</a></footer>
+    </div>
+  </div>
+  <noscript><p class="demo-warning">Bản demo cần JavaScript để hoạt động. Không có dữ liệu nào được gửi lên dịch vụ bên ngoài.</p></noscript>
+  <script type="module" src="./couples-app.js"></script>
+</body>
+</html>

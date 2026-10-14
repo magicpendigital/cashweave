@@ -1,0 +1,27 @@
+{
+  "name": "financial-assistant-prototype",
+  "private": true,
+  "version": "0.4.0",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "build:review": "node scripts/build-review.mjs && node scripts/build-next-review.mjs",
+    "pretest": "npm run build:review",
+    "test": "node --test tests/*.test.mjs",
+    "build:android:web": "node scripts/build-android-web.mjs",
+    "android:sync": "node scripts/build-android-web.mjs && node scripts/sync-android-assets.mjs && node scripts/verify-android-assets.mjs",
+    "android:check": "node scripts/check-android-toolchain.mjs",
+    "android:compile:unsigned": "npm run android:check && npm run android:sync && gradle --no-daemon -p android :app:assembleRelease",
+    "test:android": "node --test tests/android-wrapper.test.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.3",
+    "@capacitor/core": "8.5.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.3"
+  }
+}

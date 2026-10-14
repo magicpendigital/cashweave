@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#12312e" />
+    <meta name="description" content="Prototype quản lý dòng tiền, thẻ và tài sản cá nhân." />
+    <title>Mạch tiền · Sổ thử nghiệm</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Điều hướng chính">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+          <div><strong>Mạch tiền</strong><small>Không gian tài chính cá nhân</small></div>
+        </div>
+
+        <div class="sidebar-section-label">KHÁM PHÁ</div>
+        <nav class="nav-list" id="side-nav">
+          <button class="nav-item active" type="button" data-view="dashboard"><span class="nav-icon" data-icon="grid"></span><span>Tổng quan</span></button>
+          <button class="nav-item" type="button" data-view="transactions"><span class="nav-icon" data-icon="receipt"></span><span>Sổ giao dịch</span></button>
+          <button class="nav-item" type="button" data-view="allocations"><span class="nav-icon" data-icon="coin"></span><span>Phân bổ & mẫu</span></button>
+          <button class="nav-item" type="button" data-view="assets"><span class="nav-icon" data-icon="layers"></span><span>Tài sản</span></button>
+          <button class="nav-item" type="button" data-view="calendar"><span class="nav-icon" data-icon="calendar"></span><span>Lịch tiền</span></button>
+        </nav>
+
+        <div class="sidebar-section-label sidebar-section-label-secondary">TÙY CHỌN</div>
+        <button class="nav-item" type="button" data-view="shared"><span class="nav-icon" data-icon="layers"></span><span>Không gian chung</span></button>
+        <div class="sidebar-section-label sidebar-section-label-secondary">HỖ TRỢ</div>
+        <nav class="nav-list">
+          <button class="nav-item" type="button" data-view="data"><span class="nav-icon" data-icon="lock"></span><span>Dữ liệu & lịch sử</span></button>
+          <button class="nav-item" type="button" data-view="guide"><span class="nav-icon" data-icon="help"></span><span>Hướng dẫn</span></button>
+        </nav>
+
+        <div class="sidebar-spacer"></div>
+        <div class="privacy-note">
+          <span class="privacy-icon" data-icon="lock"></span>
+          <strong>Dữ liệu trên trình duyệt</strong>
+          <p>Đây là bản thử nghiệm. Dữ liệu lưu dạng rõ trên trình duyệt này, chưa mã hóa. Hãy xuất bản sao JSON định kỳ.</p>
+        </div>
+        <div class="sidebar-bottom"><span class="status-dot"></span> Sổ thử nghiệm <span class="version">OFFLINE MVP 0.4</span></div>
+      </aside>
+
+      <div class="main-column">
+        <header class="topbar">
+          <div class="topbar-brand-mobile"><div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div><strong>Mạch tiền</strong></div>
+          <div class="topbar-title"><span class="eyebrow">KHÔNG GIAN CỦA BẠN</span><h1 id="page-title">Tổng quan</h1></div>
+          <div class="topbar-actions"><span class="today-label" id="today-label"></span><span class="demo-pill"><span class="status-dot"></span>Sổ thử nghiệm</span><button class="button button-primary top-add" data-action="add-transaction" type="button" aria-label="Thêm giao dịch"><span data-icon="plus"></span><span>Thêm giao dịch</span></button></div>
+        </header>
+
+        <div class="scope-note" role="note">Sổ cá nhân · Thu chi, tài khoản, thẻ và tài sản của bạn. Không cần mời ai. Chỉ dùng dữ liệu thử nghiệm.</div>
+        <div id="file-origin-notice" class="scope-note notice warn" role="note" hidden>Đang mở HTML trực tiếp: lưu trữ và khóa ghi phụ thuộc trình duyệt; khả năng ghi bằng cách nhấp đúp chưa được kiểm chứng. Cách chạy để ghi ưu tiên: giải nén ZIP mã nguồn, cài Node.js 20+, chạy npm start trong thư mục ứng dụng, rồi mở http://127.0.0.1:4173. Nếu khóa ghi bị chặn, chỉ xem/xuất bản sao.</div>
+        <main id="view" class="view" tabindex="-1"></main>
+        <section id="shared-view" class="shared-view" hidden aria-label="Không gian chung tùy chọn"><div class="scope-note">Phần chung không cộng vào báo cáo cá nhân. Không có giao dịch riêng nào tự động được chia sẻ. Góp quỹ / hoàn ứng là chuyển tiền; chỉ chi từ quỹ hoặc ứng trước mới ghi nhận tiêu dùng chung. Chưa có liên kết hai sổ.</div><iframe id="shared-frame" title="Sổ chung mô phỏng, độc lập với sổ cá nhân" sandbox="allow-scripts allow-forms" referrerpolicy="no-referrer"></iframe></section>
+        <nav class="mobile-nav" aria-label="Điều hướng di động">
+          <button type="button" class="mobile-nav-item active" data-view="dashboard"><span data-icon="grid"></span><span>Tổng quan</span></button>
+          <button type="button" class="mobile-nav-item" data-view="transactions"><span data-icon="receipt"></span><span>Giao dịch</span></button>
+          <button type="button" class="mobile-nav-item" data-view="allocations"><span data-icon="coin"></span><span>Phân bổ</span></button>
+          <button type="button" class="mobile-nav-item" data-view="data"><span data-icon="lock"></span><span>Dữ liệu</span></button>
+          <button type="button" class="mobile-nav-item" data-view="assets"><span data-icon="layers"></span><span>Tài sản</span></button>
+          <button type="button" class="mobile-nav-item" data-view="calendar"><span data-icon="calendar"></span><span>Lịch tiền</span></button>
+          <button type="button" class="mobile-nav-item" data-view="shared"><span data-icon="layers"></span><span>Sổ chung</span></button>
+          <button type="button" class="mobile-nav-item" data-view="guide"><span data-icon="help"></span><span>Hướng dẫn</span></button>
+        </nav>
+      </div>
+    </div>
+    <div id="modal-root"></div>
+    <div id="toast-root" aria-live="polite" aria-atomic="true"></div>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

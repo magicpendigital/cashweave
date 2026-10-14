@@ -1,0 +1,41 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace = 'app.cashweave.offline.trial'
+    compileSdk = rootProject.ext.compileSdkVersion
+    buildToolsVersion '36.0.0'
+    defaultConfig {
+        applicationId 'app.cashweave.offline.trial'
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 40101
+        versionName '0.4.1-trial.1'
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+        aaptOptions { ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~' }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+    buildTypes {
+        // A debug build is synthetic-only. No release signing key is created,
+        // accepted or stored by this project. Release output stays unsigned.
+        debug { debuggable true }
+        release {
+            debuggable false
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    lint { abortOnError true }
+}
+
+dependencies {
+    implementation project(':capacitor-android')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.activity:activity:$androidxActivityVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+}

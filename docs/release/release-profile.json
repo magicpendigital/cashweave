@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "projectId": "financial-assistant",
+  "mode": "offline",
+  "targets": [
+    {
+      "id": "local-review",
+      "kind": "local-review"
+    }
+  ],
+  "blockers": [],
+  "inputRoots": [
+    "core",
+    "ui",
+    "scripts",
+    "tests",
+    "agents",
+    "app.js",
+    "storage.js",
+    "ledger.js",
+    "server.js",
+    "index.html",
+    "next.html",
+    "package.json",
+    "AGENTS.md",
+    "docs/release",
+    ".agents/skills/financial-assistant-release"
+  ],
+  "requiredChecks": [
+    {
+      "id": "source-and-artifact-review",
+      "allowNotApplicable": false
+    },
+    {
+      "id": "owner-acceptance",
+      "allowNotApplicable": false
+    },
+    {
+      "id": "recovery-rehearsal",
+      "allowNotApplicable": false
+    },
+    {
+      "id": "integer-ledger-and-conservation",
+      "allowNotApplicable": false
+    },
+    {
+      "id": "actual-planned-proposed",
+      "allowNotApplicable": false
+    },
+    {
+      "id": "save-migration-and-restore",
+      "allowNotApplicable": false
+    },
+    {
+      "id": "browser-origin-and-multitab",
+      "allowNotApplicable": false
+    }
+  ],
+  "validationResultType": "EvidenceBundleValidation"
+}
