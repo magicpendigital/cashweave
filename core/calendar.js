@@ -1,6 +1,8 @@
 import { isValidDate, addDays } from '../ledger.js';
 export { isValidDate, addDays };
-export function requireDate(value) { if (!isValidDate(value)) throw new Error('INVALID_LOCAL_DATE'); return value; }
+// Validity is a pure function of the string; remembering accepted dates keeps O(n) validation cheap.
+const validDates = new Set();
+export function requireDate(value) { if (validDates.has(value)) return value; if (!isValidDate(value)) throw new Error('INVALID_LOCAL_DATE'); if (validDates.size > 20000) validDates.clear(); validDates.add(value); return value; }
 export function requireTimezone(value) { try { new Intl.DateTimeFormat('en-US', { timeZone: value }).format(); } catch { throw new Error('INVALID_TIMEZONE'); } return value; }
 export function todayInTimezone(timezoneId, now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-US', { timeZone: requireTimezone(timezoneId), year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);

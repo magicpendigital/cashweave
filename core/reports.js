@@ -1,7 +1,7 @@
 import { clone, digest } from './identity.js';
 import { checked, minor, sum, money } from './money.js';
-import { daysInRange, requireDate, requireTimezone, addDays } from './calendar.js';
-import { entity, planSummary, poolSummary } from './model.js';
+import { daysInRange, requireDate, requireTimezone, addDays, todayInTimezone } from './calendar.js';
+import { entity, planSummary, poolSummary, indexer, items, ACCOUNT_TYPES } from './model.js';
 
 const domains = { ActualIncome: 'ACTUAL', ActualExpense: 'ACTUAL', CashBalanceAsOf: 'ACTUAL', CashChangeInPeriod: 'ACTUAL', PlannedOpenInPeriod: 'PLAN', EnvelopeAvailable: 'ALLOCATION', Unassigned: 'ALLOCATION', ForecastAsOf: 'FORECAST' };
 export function reportDescriptor(state, input) {
@@ -30,12 +30,12 @@ export function reportDescriptor(state, input) {
   return descriptor;
 }
 const inPeriod = (date, d) => date >= d.startLocalDateInclusive && date < d.endLocalDateExclusive;
-function accountInScope(state, accountId, d) { const account = entity(state, 'accounts', accountId); return account.currencyCode === d.currencyCode && (!d.accountIds.length || d.accountIds.includes(account.id)) && (d.includeArchived || !account.archivedAtUtc); }
+function accountInScope(state, accountId, d, get = (collection, entityId) => entity(state, collection, entityId)) { const account = get('accounts', accountId); return account.currencyCode === d.currencyCode && (!d.accountIds.length || d.accountIds.includes(account.id)) && (d.includeArchived || !account.archivedAtUtc); }
 const byDate = (a, b) => a.effectiveLocalDate.localeCompare(b.effectiveLocalDate) || (a.stableOrder || 0) - (b.stableOrder || 0) || a.id.localeCompare(b.id);
 export async function queryReport(state, input, { cursor = 0, pageSize = 100 } = {}) {
-  const descriptor = reportDescriptor(state, input), d = descriptor, rows = [], excluded = {};
+  const descriptor = reportDescriptor(state, input), d = descriptor, rows = [], excluded = {}, { get } = indexer(state);
   const push = (row, contribution) => rows.push({ ...clone(row), contributionMinor: checked(contribution) });
-  const postings = state.postings.filter(p => p.effectiveLocalDate < d.endLocalDateExclusive && accountInScope(state, p.accountId, d));
+  const postings = state.postings.filter(p => p.effectiveLocalDate < d.endLocalDateExclusive && accountInScope(state, p.accountId, d, get));
   if (['ActualIncome','ActualExpense','CashChangeInPeriod','CashBalanceAsOf'].includes(d.metricId)) {
     const origin = d.metricId === 'ActualIncome' ? 'INCOME' : d.metricId === 'ActualExpense' ? 'EXPENSE' : '';
     if (d.metricId === 'CashBalanceAsOf') {
@@ -43,8 +43,8 @@ export async function queryReport(state, input, { cursor = 0, pageSize = 100 } =
       if (history.length) push({ id: 'opening-before-range', rowType: 'OPENING_BEFORE_RANGE', effectiveLocalDate: d.startLocalDateInclusive, sourcePostingIds: history.map(p => p.id), stableOrder: -1 }, minor(sum(history.map(p => p.signedAmountMinor))));
     }
     for (const p of postings.filter(p => inPeriod(p.effectiveLocalDate, d))) {
-      const operation = entity(state, 'operations', p.operationId);
-      const reason = origin && p.reportingOrigin !== origin ? 'origin' : d.categoryIds.length && !d.categoryIds.includes(p.categoryId) ? 'category' : d.searchQuery && !`${operation.memo} ${p.categoryId ? entity(state,'categories',p.categoryId).name : ''} ${entity(state,'accounts',p.accountId).name}`.toLocaleLowerCase(d.timezoneId ? state.profile.locale : 'en-US').includes(d.searchQuery.toLocaleLowerCase(state.profile.locale)) ? 'search' : '';
+      const operation = get('operations', p.operationId);
+      const reason = origin && p.reportingOrigin !== origin ? 'origin' : d.categoryIds.length && !d.categoryIds.includes(p.categoryId) ? 'category' : d.searchQuery && !`${operation.memo} ${p.categoryId ? get('categories',p.categoryId).name : ''} ${get('accounts',p.accountId).name}`.toLocaleLowerCase(d.timezoneId ? state.profile.locale : 'en-US').includes(d.searchQuery.toLocaleLowerCase(state.profile.locale)) ? 'search' : '';
       if (reason) { excluded[reason] = (excluded[reason] || 0) + 1; continue; }
       push({ ...p, rowType: 'POSTING', memo: operation.memo, operationType: operation.operationType }, origin === 'EXPENSE' ? -minor(p.signedAmountMinor) : minor(p.signedAmountMinor));
     }
@@ -56,9 +56,9 @@ export async function queryReport(state, input, { cursor = 0, pageSize = 100 } =
     }
   } else if (['EnvelopeAvailable','Unassigned'].includes(d.metricId)) {
     const envelopes = state.envelopes.filter(e => e.budgetPoolId === d.budgetPoolId && (!d.envelopeIds.length || d.envelopeIds.includes(e.id)));
-    if (d.metricId === 'Unassigned') for (const p of state.postings.filter(p => p.effectiveLocalDate < d.endLocalDateExclusive && entity(state,'accounts',p.accountId).budgetPoolId === d.budgetPoolId && entity(state,'accounts',p.accountId).includeInBudget)) push({ ...p, rowType: 'POOL_CASH' }, minor(p.signedAmountMinor));
+    if (d.metricId === 'Unassigned') for (const p of state.postings.filter(p => p.effectiveLocalDate < d.endLocalDateExclusive && get('accounts',p.accountId).budgetPoolId === d.budgetPoolId && get('accounts',p.accountId).includeInBudget)) push({ ...p, rowType: 'POOL_CASH' }, minor(p.signedAmountMinor));
     for (const e of state.allocationEntries.filter(e => e.envelopeId && envelopes.some(v => v.id === e.envelopeId))) {
-      const app = entity(state, 'allocationApplications', e.applicationId); if (app.allocationEffectiveLocalDate >= d.endLocalDateExclusive) continue;
+      const app = get('allocationApplications', e.applicationId); if (app.allocationEffectiveLocalDate >= d.endLocalDateExclusive) continue;
       push({ ...e, effectiveLocalDate: app.allocationEffectiveLocalDate, rowType: 'ALLOCATION' }, minor(e.signedAmountMinor) * (d.metricId === 'Unassigned' ? -1n : 1n));
     }
     for (const link of state.spendLinks.filter(l => l.effectiveLocalDate < d.endLocalDateExclusive && envelopes.some(e => e.id === l.envelopeId))) push({ ...link, rowType: 'ENVELOPE_SPEND' }, minor(link.signedAmountMinor) * (d.metricId === 'Unassigned' ? 1n : -1n));
@@ -78,8 +78,28 @@ export async function queryReport(state, input, { cursor = 0, pageSize = 100 } =
 }
 export function dailyAccountTimeline(state, descriptor) {
   const d = reportDescriptor(state, { ...descriptor, metricId: 'CashBalanceAsOf' });
-  const postings = state.postings.filter(p => p.effectiveLocalDate < d.endLocalDateExclusive && accountInScope(state,p.accountId,d)).sort(byDate);
+  const { get } = indexer(state), postings = state.postings.filter(p => p.effectiveLocalDate < d.endLocalDateExclusive && accountInScope(state,p.accountId,d,get)).sort(byDate);
   const opening = sum(postings.filter(p => p.effectiveLocalDate < d.startLocalDateInclusive).map(p => p.signedAmountMinor)); let balance = minor(opening);
-  const days = daysInRange(d.startLocalDateInclusive,d.endLocalDateExclusive).map(date => { const rows = postings.filter(p => p.effectiveLocalDate === date); const movement = sum(rows.map(p => p.signedAmountMinor)); balance += minor(movement); return { date, openingMinor: checked(balance - minor(movement)), movementMinor: movement, closingMinor: checked(balance), postingIds: rows.map(p => p.id) }; });
+  const byDay = new Map(); for (const p of postings) { const list = byDay.get(p.effectiveLocalDate); if (list) list.push(p); else byDay.set(p.effectiveLocalDate, [p]); }
+  const days = daysInRange(d.startLocalDateInclusive,d.endLocalDateExclusive).map(date => { const rows = byDay.get(date) || []; const movement = sum(rows.map(p => p.signedAmountMinor)); balance += minor(movement); return { date, openingMinor: checked(balance - minor(movement)), movementMinor: movement, closingMinor: checked(balance), postingIds: rows.map(p => p.id) }; });
   return { descriptor: d, openingBeforeRangeMinor: opening, days, closingMinor: checked(balance), revision: state.revision };
+}
+
+// Net worth as of a local date (inclusive) for one currency. Ledger balances for every account; INVESTMENT accounts
+// use their latest valuation <= date instead (falling back to the ledger balance). Spendable excludes INVESTMENT.
+// stale: investment with no valuation yet, or whose latest valuation is more than staleDays before date.
+export function netWorth(state, { date = todayInTimezone(state.profile.timezoneId), staleDays = 7, currencyCode = state.profile.defaultCurrencyCode } = {}) {
+  requireDate(date); money(currencyCode, '0');
+  if (!Number.isSafeInteger(staleDays) || staleDays < 0) throw new Error('INVALID_STALE_DAYS');
+  const accounts = state.accounts.filter(a => a.currencyCode === currencyCode), ledger = new Map(accounts.map(a => [a.id, 0n])), latest = new Map();
+  for (const v of items(state, 'valuations')) if (ledger.has(v.accountId) && v.date <= date && !(latest.get(v.accountId)?.date > v.date)) latest.set(v.accountId, v);
+  const since = new Map(); // ledger movement on a valued investment account after its valuation date (transfers in/out keep net worth whole)
+  for (const p of state.postings) if (ledger.has(p.accountId) && p.effectiveLocalDate <= date) { const n = minor(p.signedAmountMinor); ledger.set(p.accountId, ledger.get(p.accountId) + n); if (latest.has(p.accountId) && p.effectiveLocalDate > latest.get(p.accountId).date) since.set(p.accountId, (since.get(p.accountId) || 0n) + n); }
+  const age = from => (Date.parse(date + 'T00:00:00Z') - Date.parse(from + 'T00:00:00Z')) / 86400000;
+  const rows = accounts.map(a => {
+    const valuation = a.type === 'INVESTMENT' ? latest.get(a.id) : undefined;
+    return { accountId: a.id, type: a.type, name: a.name, archived: Boolean(a.archivedAtUtc), includeInBudget: a.includeInBudget, valueMinor: valuation ? checked(minor(valuation.valueMinor) + (since.get(a.id) || 0n)) : checked(ledger.get(a.id)), sinceValuationMinor: valuation ? checked(since.get(a.id) || 0n) : '0', ledgerMinor: checked(ledger.get(a.id)), valuedAt: valuation ? valuation.date : null, valuationId: valuation ? valuation.id : null, stale: a.type === 'INVESTMENT' && (!valuation || age(valuation.date) > staleDays) };
+  });
+  const total = list => sum(list.map(r => r.valueMinor));
+  return { date, currencyCode, staleDays, totalMinor: total(rows), spendableMinor: total(rows.filter(r => r.type !== 'INVESTMENT')), groups: ACCOUNT_TYPES.filter(type => rows.some(r => r.type === type)).map(type => ({ type, totalMinor: total(rows.filter(r => r.type === type)) })), accounts: rows, revision: state.revision };
 }

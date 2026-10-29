@@ -1,6 +1,6 @@
 import { clone, digest } from './identity.js';
-import { createDataset, validateSnapshot } from './model.js';
-import { prepareCommand } from './commands.js';
+import { createDataset, validateSnapshot, withOptionalCollections } from './model.js';
+import { prepareCommand, VALIDATED_SNAPSHOT } from './commands.js';
 
 async function bindStage(stage,current,mode){
   if(!['new','replace'].includes(mode))throw new Error('INVALID_RESTORE_MODE');
@@ -26,12 +26,13 @@ function checkReplay(stage,current,options,targetDatasetId){
 }
 
 export function createMemoryRepository(initial = createDataset()) {
-  let snapshot = clone(validateSnapshot(initial)), queue = Promise.resolve();
+  let snapshot = withOptionalCollections(clone(validateSnapshot(initial))), queue = Promise.resolve();
   const stages = new Map(), archived = new Map(), activated = new Map();
   const atomic = fn => { const next = queue.then(fn); queue = next.catch(() => {}); return next; };
   return {
+    readsValidated: true, // readSnapshot() always returns a snapshot that passed validateSnapshot; callers need not re-validate.
     async readSnapshot() { return clone(snapshot); },
-    runAtomicCommand(command, expectedRevision, options = {}) { return atomic(async () => { const prepared = await prepareCommand(snapshot, command, expectedRevision, options); if (options.failBeforeCommit) throw new Error('SIMULATED_COMMIT_FAILURE'); snapshot = prepared.snapshot; return clone(prepared.result); }); },
+    runAtomicCommand(command, expectedRevision, options = {}) { return atomic(async () => { const prepared = await prepareCommand(snapshot, command, expectedRevision, { ...options, [VALIDATED_SNAPSHOT]: true }); if (options.failBeforeCommit) throw new Error('SIMULATED_COMMIT_FAILURE'); snapshot = prepared.snapshot; return clone(prepared.result); }); },
     async stageRestore(stage,{mode='new'}={}) { stages.set(stage.id,await bindStage(stage,snapshot,mode)); return stage.id; },
     async readStage(stageId) { const stage = stages.get(stageId); if (!stage) throw new Error('UNKNOWN_STAGE'); return clone(stage); },
     activateStage(stageId, { expectedDatasetId, expectedRevision, confirm = false, backupAcknowledged = false, mode = 'new', failBeforeCommit = false } = {}) { return atomic(async () => {
@@ -42,7 +43,7 @@ export function createMemoryRepository(initial = createDataset()) {
       checkActivation(stage,snapshot,{expectedDatasetId,expectedRevision,mode});
       validateSnapshot(stage.snapshot);
       if (failBeforeCommit) throw new Error('SIMULATED_COMMIT_FAILURE');
-      archived.set(snapshot.datasetId, clone(snapshot)); snapshot = clone(stage.snapshot);
+      archived.set(snapshot.datasetId, clone(snapshot)); snapshot = withOptionalCollections(clone(stage.snapshot));
       activated.set(stage.sourceFingerprint,snapshot.datasetId);
       return clone(snapshot);
     }); },
@@ -66,16 +67,23 @@ export async function openIndexedDbRepository({ namespace = 'personal', profile 
     const get = meta.get('active'); get.onsuccess = () => { if (!get.result) { tx.objectStore('snapshots').put(fresh); meta.put({ key:'active', datasetId:fresh.datasetId }); } };
     await done;
   }
-  async function readSnapshot() {
+  // datasetId:revision this instance last fully validated or committed itself. Any other stored state (first open,
+  // another tab's write, rollback) is fully validated on read; revisions are unique per dataset because commits
+  // compare-and-set the revision inside the transaction.
+  let verified = '';
+  const key = state => state.datasetId + ':' + state.revision;
+  async function readSnapshot({ revalidate = false } = {}) {
     const tx = db.transaction(['meta','snapshots'],'readonly'), done = completed(tx);
     const active = await request(tx.objectStore('meta').get('active'));
     const snapshot = await request(tx.objectStore('snapshots').get(active.datasetId)); await done;
-    return clone(validateSnapshot(snapshot));
+    if (revalidate || !snapshot || key(snapshot) !== verified) { validateSnapshot(snapshot); verified = key(snapshot); }
+    return withOptionalCollections(snapshot); // IndexedDB get already yields a private structured clone.
   }
   return {
+    readsValidated: true,
     readSnapshot,
     async runAtomicCommand(command, expectedRevision, options = {}) {
-      const before = await readSnapshot(), prepared = await prepareCommand(before,command,expectedRevision,options);
+      const before = await readSnapshot(), prepared = await prepareCommand(before,command,expectedRevision,{...options,[VALIDATED_SNAPSHOT]:true});
       if (prepared.replay) return clone(prepared.result);
       // Async hashing/calculation completes before opening the transaction; no transaction awaits unrelated promises.
       const tx = db.transaction(['meta','snapshots'],'readwrite'), done = completed(tx); let conflict, receipt = prepared.result, committed = true;
@@ -94,7 +102,7 @@ export async function openIndexedDbRepository({ namespace = 'personal', profile 
         };
       };
       try { await done; } catch (error) { throw conflict || error; }
-      if (committed) announce(prepared.snapshot); return clone(receipt);
+      if (committed) { verified = key(prepared.snapshot); announce(prepared.snapshot); } return clone(receipt);
     },
     async stageRestore(stage,{mode='new'}={}) { const bound=await bindStage(stage,await readSnapshot(),mode);const tx = db.transaction('stages','readwrite'), done = completed(tx); tx.objectStore('stages').put(bound); await done; return stage.id; },
     async readStage(stageId) { const tx = db.transaction('stages','readonly'), done = completed(tx); const stage = await request(tx.objectStore('stages').get(stageId)); await done; if (!stage) throw new Error('UNKNOWN_STAGE'); return clone(stage); },
@@ -103,7 +111,7 @@ export async function openIndexedDbRepository({ namespace = 'personal', profile 
       const read = db.transaction('stages','readonly'), readDone = completed(read), stage = await request(read.objectStore('stages').get(stageId)); await readDone;
       if (!stage?.activationAllowed || !confirm || !backupAcknowledged) throw new Error('STAGE_CONFIRMATION_REQUIRED');
       validateSnapshot(stage.snapshot);
-      const replacement = clone(stage.snapshot);
+      const replacement = withOptionalCollections(clone(stage.snapshot));
       const tx = db.transaction(['stages','meta','snapshots'],'readwrite'), done = completed(tx); let conflict, activated = replacement;
       const active = tx.objectStore('meta').get('active');
       active.onsuccess = () => { const current = tx.objectStore('snapshots').get(active.result.datasetId); current.onsuccess = () => {
@@ -120,6 +128,7 @@ export async function openIndexedDbRepository({ namespace = 'personal', profile 
         };
       }; };
       try { await done; } catch (error) { throw conflict || error; }
+      if (activated === replacement) verified = key(replacement);
       announce(activated); return clone(activated);
     },
     async rollback(datasetId) {

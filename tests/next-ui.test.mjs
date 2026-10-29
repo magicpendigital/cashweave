@@ -11,7 +11,7 @@ function uniqueIds(h){const ids=h.root.querySelectorAll('[id]').map(n=>n.id);ass
 test('clean onboarding creates only opening cash; routes and currencies remain scoped',async()=>{
  const h=await nextHarness();assert.equal(h.app.currentRoute(),'start');assert.equal(h.app.snapshot().postings.length,0);
  await h.app.go('create');await h.submit('onboard-form',{...onboarding,opening:'1.000.000'});const s=h.app.snapshot();assert.equal(s.accounts.length,1);assert.equal(accountBalance(s,s.accounts[0].id),'1000000');assert.equal(s.operations.length,1);
- assert.equal(h.root.querySelector('[data-metric="actualIncome"]').children[2].textContent,'0 ₫');uniqueIds(h);
+ assert.equal(h.root.querySelector('[data-metric="actualIncome"]').querySelector('[data-amount]').textContent.replace('+',''),'0 ₫');uniqueIds(h);
  await h.app.go('calendar');assert.equal(h.app.currentRoute(),'plans');await h.app.go('help');assert.ok(h.text().includes(t('allocationHelp')));h.app.close();
 });
 test('locale decimal precision is exact and invalid money leaves the form retryable',async()=>{
@@ -27,7 +27,7 @@ test('template preview is reversible, changed inputs require review, confirm pre
  await h.submit('allocation-form',values);await h.get('allocation-confirm').click();s=h.app.snapshot();assert.equal(s.allocationApplications.length,1);assert.equal(s.operations.filter(o=>o.operationType==='INCOME').length,1);assert.equal(accountBalance(s,s.accounts[0].id),'20000000');assert.equal(poolSummary(s,s.budgetPools[0].id).unassigned,'14000000');uniqueIds(h);h.app.close();
 });
 test('card drilldown retains descriptor and timeline carries cash across days',async()=>{
- const h=await ready();await income(h,'8.000.000');await h.app.go('overview');const card=h.root.querySelector('[data-metric="actualIncome"]');const shown=card.children[2].textContent;await card.click();assert.equal(h.app.currentRoute(),'reports/ActualIncome');assert.ok(h.text().includes(shown));assert.ok(h.text().includes('Synthetic salary'));
+ const h=await ready();await income(h,'8.000.000');await h.app.go('overview');const card=h.root.querySelector('[data-metric="actualIncome"]');const shown=card.querySelector('[data-amount]').textContent.replace('+','');await card.click();assert.equal(h.app.currentRoute(),'reports/ActualIncome');assert.ok(h.text().includes(shown));assert.ok(h.text().includes('Synthetic salary'));
  const accountId=h.app.snapshot().accounts[0].id;await h.app.go('accounts/'+accountId+'/timeline');assert.ok(h.text().includes('8.000.000'));assert.ok(h.text().includes(t('noMovement')));h.app.close();
 });
 test('partial plan receipt records cash once; finalizing preserves variance without creating cash',async()=>{

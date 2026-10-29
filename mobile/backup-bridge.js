@@ -1,4 +1,4 @@
-export const MAX_BACKUP_BYTES = 5 * 1024 * 1024;
+export const MAX_BACKUP_BYTES = 64 * 1024 * 1024;
 
 // Native completion is the only success signal. Never fall back to blob URLs,
 // whose download behavior is unreliable in Android WebView.
@@ -19,8 +19,9 @@ export function createNativeBackupAdapter(plugin, showStatus) {
         if (result.cancelled) { showStatus('Đã hủy xuất bản sao. Chưa lưu tệp.'); return; }
         if (result.saved !== true || result.bytes !== expectedBytes || result.bytes <= 0) throw new Error('BACKUP_WRITE_FAILED');
         showStatus('Đã lưu bản sao JSON vào vị trí bạn chọn. Hãy giữ tệp riêng tư và thử khôi phục để kiểm tra.');
+        return { saved: true };
       } catch (error) {
-        showStatus(error?.message === 'BACKUP_TOO_LARGE' ? 'Bản sao vượt giới hạn 5 MiB. Chưa lưu tệp.' : 'Không xác nhận được bản sao JSON đã lưu đầy đủ. Tệp có thể trống hoặc chưa đầy đủ; hãy kiểm tra và xuất lại. Dữ liệu trong ứng dụng vẫn giữ nguyên.', true);
+        showStatus(error?.message === 'BACKUP_TOO_LARGE' ? 'Bản sao vượt giới hạn 64 MiB. Chưa lưu tệp.' : 'Không xác nhận được bản sao JSON đã lưu đầy đủ. Tệp có thể trống hoặc chưa đầy đủ; hãy kiểm tra và xuất lại. Dữ liệu trong ứng dụng vẫn giữ nguyên.', true);
       }
     }),
     onReadBackup: async () => run(async () => {
@@ -31,7 +32,7 @@ export function createNativeBackupAdapter(plugin, showStatus) {
         if (new TextEncoder().encode(result.text).byteLength !== result.bytes) throw new Error('BACKUP_READ_FAILED');
         return { text: result.text, size: result.bytes };
       } catch (error) {
-        showStatus(error?.message === 'BACKUP_TOO_LARGE' ? 'Tệp vượt giới hạn 5 MiB. Chưa khôi phục dữ liệu.' : 'Không đọc được tệp JSON. Dữ liệu hiện tại không thay đổi. Hãy chọn tệp trên thiết bị rồi thử lại.', true);
+        showStatus(error?.message === 'BACKUP_TOO_LARGE' ? 'Tệp vượt giới hạn 64 MiB. Chưa khôi phục dữ liệu.' : 'Không đọc được tệp JSON. Dữ liệu hiện tại không thay đổi. Hãy chọn tệp trên thiết bị rồi thử lại.', true);
         return null;
       }
     })

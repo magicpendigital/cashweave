@@ -35,9 +35,8 @@ test('independent V4: account/date/query/type scope survives ledger detail and B
     await actual(h,{type:'EXPENSE',amount:'40',accountId:wallet,memo:'needle other account'});
     await actual(h,{type:'EXPENSE',amount:'50',memo:'unrelated debit'});
     const before = h.app.snapshot();
-    await h.app.go('overview');
+    await h.app.go('transactions');
     await h.submit('period-form',{from:'2026-10-01',through:'2026-10-31',currencyCode:'VND',accountId:bank});
-    await h.button(t('viewLedger')).click();
     await h.submit('ledger-filter-form',{query:'NEEDLE',type:'EXPENSE'});
     assert.equal(h.get('ledger-count').textContent,t('resultsCount')+': 1');
     const links = ledgerLinks(h);
@@ -75,16 +74,21 @@ test('independent V4: persistent expense action carries account context and tran
     assert.equal(h.get('transaction-form-operationType').value,'EXPENSE');
     assert.equal(h.get('transaction-form-accountId').value,pocket);
     assert.equal(h.get('transaction-form-toAccountId'),null);
-    assert.deepEqual(h.get('transaction-form-categoryId').children.map(n=>n.value),['',expenseCategory]);
+    assert.deepEqual(h.root.querySelectorAll('[data-category]').map(n=>n.getAttribute('data-category')),[expenseCategory]);
+    await h.root.querySelector('[data-category]').click();
+    assert.equal(h.get('transaction-form-categoryId').value,expenseCategory);
+    assert.equal(h.root.querySelector('[data-category]').getAttribute('aria-pressed'),'true');
     h.setForm('transaction-form',{amount:'75',memo:'Draft transfer survives',date:'2026-10-25',categoryId:expenseCategory,operationType:'TRANSFER'});
     await h.get('transaction-form-operationType').dispatch('change');
     assert.ok(h.get('transaction-form-toAccountId'));
     assert.equal(h.get('transaction-form-amount').value,'75');
     assert.equal(h.get('transaction-form-memo').value,'Draft transfer survives');
-    assert.equal(h.get('transaction-form-categoryId').value,'');
-    h.setForm('transaction-form',{operationType:'EXPENSE'});
-    await h.get('transaction-form-operationType').dispatch('change');
+    assert.equal(h.get('transaction-form-categoryId'),null);
+    assert.ok(h.text().includes(t('transferHint')));
+    await h.root.querySelector('[data-operation-type="EXPENSE"]').click();
     assert.equal(h.get('transaction-form-toAccountId'),null);
+    assert.equal(h.get('transaction-form-categoryId').value,'');
+    assert.equal(h.get('transaction-form-amount').value,'75');
     const before=h.app.snapshot();
     await h.submit('transaction-form',{operationType:'EXPENSE',accountId:pocket,amount:'75',memo:'Independent cash debit',date:'2026-10-25',categoryId:expenseCategory});
     const after=h.app.snapshot();
@@ -96,7 +100,7 @@ test('independent V4: persistent expense action carries account context and tran
   } finally {h.app.close();}
 });
 
-test('independent V4: current unpaid obligations stay visible while actual overview is scoped to a past period', async () => {
+test('independent V4: home always shows current unpaid obligations; Kế hoạch scopes keep overdue, upcoming and period apart', async () => {
   const h=await ready();
   try {
     const overdue=await plan(h,'Independent overdue','2026-10-20');
@@ -106,15 +110,16 @@ test('independent V4: current unpaid obligations stay visible while actual overv
     await h.app.go('plans/'+finalized);
     await h.button(t('finalize')).click();
     const before=h.app.snapshot();
-    await h.app.go('overview');
+    await h.app.go('transactions');
     await h.submit('period-form',{from:'2026-09-01',through:'2026-09-30',currencyCode:'VND',accountId:''});
+    await h.app.go('overview');
     assert.ok(h.text().includes('Independent overdue'));
     assert.ok(h.text().includes('Independent imminent'));
     assert.ok(!h.text().includes('Independent distant'));
     assert.ok(!h.text().includes('Independent finalized'));
-    await h.button(t('allPending')).click();
-    assert.equal(h.get('period-form-from').value,'2026-09-01');
+    await h.app.go('plans');
     assert.ok(h.text().includes('Independent distant'));
+    assert.ok(h.text().includes(t('overdueSection')));
     await h.submit('plan-scope-form',{visibility:'overdue'});
     assert.ok(h.text().includes('Independent overdue'));
     assert.ok(!h.text().includes('Independent imminent'));
@@ -128,7 +133,6 @@ test('independent V4: current unpaid obligations stay visible while actual overv
     assert.deepEqual(h.app.snapshot(),before);
   } finally {h.app.close();}
 });
-
 test('independent V4: specific receipt proposal cannot borrow other capacity; changed proposal is invalid until previewed again',async()=>{
   const h=await ready();
   try {
@@ -218,7 +222,7 @@ test('independent V4: allocation from a specific receipt rejects an incompatible
     // the receipt selection; it cannot silently fall back to unrelated USD funds.
     assert.equal(h.get('allocation-form'),null);
     assert.ok(h.text().includes(t('receiptUnavailable')));
-    await h.app.go('templates');
+    await h.app.go('recipes');
     const use=h.button(t('useTemplate'));
     assert.equal(use.disabled,true);
     await h.button(t('chooseOtherSources')).click();
@@ -259,7 +263,7 @@ test('independent V4: locked receipt cannot be replaced through submitted form v
   }finally {h.app.close();}
 });
 
-test('independent V4: historical overview pool uses selected end date and whole-currency scope',async()=>{
+test('independent V4: unassigned money is whole-currency on Home and Hũ regardless of a ledger account filter',async()=>{
   const h=await ready();
   try {
     const bank=h.app.snapshot().accounts[0].id;
@@ -268,16 +272,16 @@ test('independent V4: historical overview pool uses selected end date and whole-
     await actual(h,{amount:'200',date:'2026-09-10',accountId:pocket,memo:'September pocket source'});
     await actual(h,{amount:'300',date:'2026-10-10',memo:'October bank source'});
     const before=h.app.snapshot();
-    await h.app.go('overview');
+    await h.app.go('transactions');
     await h.submit('period-form',{from:'2026-09-01',through:'2026-09-30',currencyCode:'VND',accountId:bank});
-    const section=h.root.querySelectorAll('section').find(n=>n.querySelector('h2')?.textContent===t('moneyAssigned'));
-    assert.ok(section);
-    assert.ok(section.textContent.includes(t('poolAllAccounts')));
-    assert.equal(section.querySelector('strong').textContent,'1.200 ₫');
+    await h.app.go('overview');
+    assert.ok(h.root.querySelector('[data-suggest="allocate"]').textContent.includes('1.500'));
+    await h.app.go('funds');
+    assert.match(h.root.querySelector('[data-amount="unassigned"]').textContent,/^1\.500\s₫$/);
+    assert.ok(h.text().includes(t('fundsIntro')));
     assert.deepEqual(h.app.snapshot(),before);
   }finally{h.app.close();}
 });
-
 test('independent V4: category-only search retrieves posting category and remains available after category archive',async()=>{
   const h=await ready();
   try {

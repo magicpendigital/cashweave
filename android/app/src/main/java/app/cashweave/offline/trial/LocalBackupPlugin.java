@@ -34,7 +34,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * instance state, logs, preferences, retained URI grants, or app-private files. */
 @CapacitorPlugin(name = "LocalBackup")
 public class LocalBackupPlugin extends Plugin {
-    private static final int MAX_BYTES = 5 * 1024 * 1024;
+    private static final int MAX_BYTES = 64 * 1024 * 1024;
     private static final long IO_TIMEOUT_SECONDS = 30;
     private static final String INTERRUPTION = "backupPending";
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor(r -> daemon(r, "cashweave-backup-io"));

@@ -1,11 +1,12 @@
 import { clone, digest, id, canonical } from './identity.js';
-import { createDataset, record, validateSnapshot, accountBalance, poolSummary, COLLECTIONS } from './model.js';
+import { createDataset, record, validateSnapshot, accountBalance, poolSummary, COLLECTIONS, withOptionalCollections } from './model.js';
 import { minor, checked, money, CURRENCY_TABLE_VERSION } from './money.js';
 import { requireDate } from './calendar.js';
 import { normalizeState } from '../state-schema.js';
 import { calculateBalances } from '../ledger.js';
 
-const MAX_BYTES = 5 * 1024 * 1024;
+export const MAX_BACKUP_BYTES = 64 * 1024 * 1024; // Matches mobile/backup-bridge.js and LocalBackupPlugin.MAX_BYTES.
+const MAX_BYTES = MAX_BACKUP_BYTES;
 export async function exportSnapshot(snapshot) {
   validateSnapshot(snapshot);
   const payload = { formatId:'mach-tien-export',schemaVersion:3,appVersion:'next-mvp-checkpoint-1',exportedAtUtc:new Date().toISOString(),datasetId:snapshot.datasetId,currencyTableVersion:CURRENCY_TABLE_VERSION,entities:clone(snapshot) };
@@ -24,6 +25,7 @@ export async function stageRestore(raw, { namespace = 'personal' } = {}) {
   if (parsed.datasetId !== parsed.entities.datasetId) throw new Error('BACKUP_DATASET_MISMATCH');
   if (parsed.entities.namespace === 'sandbox' && namespace === 'personal') throw new Error('SANDBOX_IMPORT_REQUIRES_SEPARATE_NAMESPACE');
   const snapshot = clone(parsed.entities), datasetId = id();
+  withOptionalCollections(snapshot); // Pre-valuation backups restore with empty collections.
   snapshot.datasetId = datasetId; snapshot.profile.datasetId = datasetId;
   for (const collection of COLLECTIONS) for (const entity of snapshot[collection]) entity.datasetId = datasetId;
   return { id:id(),sourceFingerprint:await digest(raw),backupDigest:await digest(raw),snapshot,activationAllowed:true,report:{ sourceDatasetId:parsed.entities.datasetId, accounts:parsed.entities.accounts.length,postings:parsed.entities.postings.length,operations:parsed.entities.operations.length,plans:parsed.entities.occurrences.length },createdAtUtc:new Date().toISOString(),rawBackup:raw };

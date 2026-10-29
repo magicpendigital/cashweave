@@ -19,14 +19,14 @@ test('native backup reports success only after actual write completion', async (
   const pending = adapter.onDownload('{"sổ":1}', 'backup.json');
   assert.equal(messages.length, 0);
   finish({ saved: true, bytes: new TextEncoder().encode('{"sổ":1}').byteLength });
-  await pending;
+  assert.deepEqual(await pending, { saved: true });
   assert.match(messages[0][0], /Đã lưu/);
   assert.notEqual(messages[0][1], true);
 });
 
 test('native backup cancellation is explicit and never called success', async () => {
   const { adapter, messages } = setup({ saveJson: async () => ({ cancelled: true }) });
-  await adapter.onDownload('{}', 'backup.json');
+  assert.equal(await adapter.onDownload('{}', 'backup.json'), undefined);
   assert.match(messages[0][0], /Đã hủy/);
   assert.doesNotMatch(messages[0][0], /Đã lưu/);
 });
@@ -34,20 +34,20 @@ test('native backup cancellation is explicit and never called success', async ()
 test('native backup failure and incorrect byte count cannot silently succeed', async () => {
   for (const saveJson of [async () => { throw new Error('provider'); }, async () => ({ saved: true, bytes: 1 }), async () => ({ saved: false, bytes: 2 })]) {
     const { adapter, messages } = setup({ saveJson });
-    await adapter.onDownload('{}', 'backup.json');
+    assert.equal(await adapter.onDownload('{}', 'backup.json'), undefined);
     assert.equal(messages[0][1], true);
     assert.match(messages[0][0], /Không xác nhận được/);
     assert.match(messages[0][0], /Tệp có thể trống hoặc chưa đầy đủ/);
   }
 });
 
-test('native backup enforces 5 MiB UTF-8 limit before picker', async () => {
+test('native backup enforces 64 MiB UTF-8 limit before picker', async () => {
   let opened = false;
   const { adapter, messages } = setup({ saveJson: async () => { opened = true; } });
   await adapter.onDownload('é'.repeat(Math.floor(MAX_BACKUP_BYTES / 2) + 1), 'backup.json');
   assert.equal(opened, false);
   assert.equal(messages[0][1], true);
-  assert.match(messages[0][0], /5 MiB/);
+  assert.match(messages[0][0], /64 MiB/);
 });
 
 test('native restore returns unchanged text and byte size for application validation', async () => {
