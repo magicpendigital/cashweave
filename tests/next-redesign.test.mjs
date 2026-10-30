@@ -39,6 +39,11 @@ test('editing or cancelling an expense keeps one visible row and restores the ba
  await h.app.go('transactions/'+expense.id);await h.submit('correct-form',{...formValues(h,'correct-form'),amount:'90'});assert.equal(accountBalance(h.app.snapshot(),bank),'910');const replacement=h.app.snapshot().operations.find(o=>o.replacementForOperationId===expense.id);
  await h.app.go('transactions/'+replacement.id);await h.submit('reverse-form',{date:'2026-10-31',reason:''});assert.equal(accountBalance(h.app.snapshot(),bank),'1000');h.app.close();
 });
+test('Home "Gần đây" shows only the edited row, never the replaced original',async()=>{
+ const h=await ready({},'1.000'),expense=await record(h,{amount:'120',memo:'Synthetic recent lunch'});
+ await h.app.go('transactions/'+expense.id);await h.submit('correct-form',{...formValues(h,'correct-form'),amount:'150'});
+ await h.app.go('overview');const rows=h.root.querySelectorAll('a').filter(n=>n.textContent.includes('Synthetic recent lunch'));assert.equal(rows.length,1);assert.match(rows[0].textContent,/150/);h.app.close();
+});
 test('"Đã trả" on Home settles the plan through quick add and Kế hoạch shows the remaining state',async()=>{
  const h=await ready({},'1.000'),bank=h.app.snapshot().accounts[0].id;await h.app.perform('createPlan',{title:'Synthetic electricity',direction:'EXPENSE',currencyCode:'VND',dueLocalDate:'2026-11-05',expectedAmountMinor:'300',expectedAccountId:bank});const planId=h.app.snapshot().occurrences[0].id;
  await h.app.go('overview');await h.root.querySelector('[data-pay="'+planId+'"]').click();assert.equal(h.app.currentRoute(),'transactions/new/'+planId);assert.equal(h.get('transaction-form-accountId').value,bank);await h.submit('transaction-form',{...formValues(h,'transaction-form'),amount:'100'});let p=planSummary(h.app.snapshot(),planId);assert.equal(p.openRemaining,'200');

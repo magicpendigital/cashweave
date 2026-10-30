@@ -111,6 +111,7 @@ button.tile:hover{border-color:var(--brand)}
 .checkbox{display:flex;gap:10px;align-items:flex-start;margin:12px 0;font-size:var(--fs-2)}.checkbox input{margin-top:5px;width:20px;height:20px}
 form>.actions{margin-top:4px}
 .sticky-submit{position:sticky;bottom:calc(8px + var(--safe-bottom));z-index:2}
+.app-column.with-nav .sticky-submit{bottom:calc(var(--nav-h) + 26px + var(--safe-bottom))}
 .question{margin:4px 0 10px;font-size:16px;font-weight:600}
 details>summary{cursor:pointer}
 .disclosure>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;min-height:44px;font-weight:600;font-size:var(--fs-2)}
