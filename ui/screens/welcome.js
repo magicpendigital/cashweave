@@ -9,10 +9,11 @@ export function startScreen(c){
     h('div',{class:'brand-row'},h('span',{class:'brand-mark','aria-hidden':'true'},icon('transfer')),h('strong',{},t('app'))),
     h('h1',{},t('welcome')),h('p',{class:'start-intro'},t('welcomeIntro')),
     h('ul',{class:'benefits'},benefit('cash','tone-green','benefitWhere','benefitWhereHelp'),benefit('calendar','tone-amber','benefitDue','benefitDueHelp'),benefit('lock','tone-blue','benefitPrivate','benefitPrivateHelp')),
+    h('a',{href:'#help',id:'start-guide',class:'guide-card',onClick:c.run(()=>go('help'))},h('span',{class:'benefit-icon tone-blue'},icon('help')),h('span',{class:'grow'},h('strong',{},t('guideCardTitle')),h('span',{class:'row-meta'},t('guideCardBody'))),icon('chevron')),
     c.hasIncompleteBook()?notice('setupRecovery',true):null,c.needsReadRecovery?notice('savedStateUnknown',true):null,c.needsReadRecovery?action('reload',refresh,true):null,
     draft?card(h('p',{},t('setupDraftHelp')),action('resumeSetup',()=>go('create'))):null,
     ui.legacyRaw?notice('legacyWelcome'):null,
-    h('div',{class:'start-actions'},action('beginCreate',()=>go('create'),true,{id:'start-create',class:'button primary wide',disabled:blocked||c.pending}),link('data',t('restoreEntry'),{class:'button wide'}),ui.legacyRaw?link('data-review',t('legacyEntry'),{class:'button wide'}):null,action('startGuide',()=>go('help'),false,{id:'start-guide',class:'button text-button'})));
+    h('div',{class:'start-actions'},action('beginCreate',()=>go('create'),true,{id:'start-create',class:'button primary wide',disabled:blocked||c.pending}),link('data',t('restoreEntry'),{class:'button wide'}),ui.legacyRaw?link('data-review',t('legacyEntry'),{class:'button wide'}):null));
 }
 
 // Screen 2 · Tạo sổ: one screen; currency, timezone and start date fold into an "Đổi" row.

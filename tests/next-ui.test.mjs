@@ -12,7 +12,7 @@ test('clean onboarding creates only opening cash; routes and currencies remain s
  const h=await nextHarness();assert.equal(h.app.currentRoute(),'start');assert.equal(h.app.snapshot().postings.length,0);
  await h.app.go('create');await h.submit('onboard-form',{...onboarding,opening:'1.000.000'});const s=h.app.snapshot();assert.equal(s.accounts.length,1);assert.equal(accountBalance(s,s.accounts[0].id),'1000000');assert.equal(s.operations.length,1);
  assert.equal(h.root.querySelector('[data-metric="actualIncome"]').querySelector('[data-amount]').textContent.replace('+',''),'0 ₫');uniqueIds(h);
- await h.app.go('calendar');assert.equal(h.app.currentRoute(),'plans');await h.app.go('help');assert.ok(h.text().includes(t('allocationHelp')));h.app.close();
+ await h.app.go('calendar');assert.equal(h.app.currentRoute(),'plans');await h.app.go('help');assert.ok(h.text().includes(t('guideGlossary')));h.app.close();
 });
 test('locale decimal precision is exact and invalid money leaves the form retryable',async()=>{
  const h=await nextHarness();await h.app.go('create');await h.submit('onboard-form',{...onboarding,locale:'en-US',currencyCode:'USD',opening:'1,000.25'});let s=h.app.snapshot();assert.equal(accountBalance(s,s.accounts[0].id),'100025');

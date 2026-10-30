@@ -13,7 +13,8 @@ import { homeScreen } from './screens/home.js';
 import { ledgerScreen, quickAddScreen, transactionDetail } from './screens/ledger.js';
 import { upcomingScreen, planForm, planDetail, forecastScreen } from './screens/plans.js';
 import { fundsScreen, allocationForm, allocationDetail, envelopeDetail, recipesScreen, builderScreen } from './screens/funds.js';
-import { moreScreen, accountsScreen, accountForm, accountDetail, timelineScreen, categoriesScreen, categoryDetail, reportsScreen, reportDetail, dataScreen, migrationScreen, historyScreen, helpScreen } from './screens/more.js';
+import { moreScreen, accountsScreen, accountForm, accountDetail, timelineScreen, categoriesScreen, categoryDetail, reportsScreen, reportDetail, dataScreen, migrationScreen, historyScreen } from './screens/more.js';
+import { helpScreen } from './screens/guide.js';
 import { assetsScreen, priceUpdateScreen } from './screens/assets.js';
 
 // Old links keep working: every v0.4/V4 hash resolves to its new home in the 5-tab IA.
@@ -31,7 +32,7 @@ export async function createNextApp(root,{document = globalThis.document,browser
   const ui={range:{from:'',through:'',accountId:'',currencyCode:'VND'},ledgerFilter:{query:'',type:''},ledgerLimit:50,showCorrections:false,planScope:'pending',receiptSourceId:'',allocationPreview:null,templateDraft:null,activeReport:null,reportCursor:0,forecastRange:null,stage:null,stagedExpectation:null,stageKind:'',stageReadGeneration:0,lastDatasetId:'',legacyRaw:null,ignoreLegacy:false,openPreset:'',reportMonth:'',addingCategory:false,priceDraft:null,flash:''};
   const hasBook=()=>!!state?.profile.onboardingCompletedAtUtc&&state.accounts.length>0;
   const hasIncompleteBook=()=>!hasBook()&&(!!state?.profile.onboardingCompletedAtUtc||state?.accounts.length>0);
-  const emptyRoutes=new Set(['start','create','help','data','data-review']);
+  const emptyRoutes=new Set(['start','create','help','data','data-review']),isEmptyRoute=r=>emptyRoutes.has(r)||r.startsWith('help/');
   const today = () => todayInTimezone(state?.profile.timezoneId || 'Asia/Ho_Chi_Minh',clock());
   const currentMonth = () => today().slice(0,7);
   const monthEnd = month => new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7)),0)).toISOString().slice(0,10);
@@ -153,7 +154,7 @@ export async function createNextApp(root,{document = globalThis.document,browser
     let resolved=resolveRoute(next);
     if((pendingWrite||setupSubmission)&&route==='create'){feedback=t('setupSaving');error=false;updateFeedback();return;}
     if(hasBook()&&['start','create'].includes(resolved))resolved='overview';
-    if(!hasBook()&&!emptyRoutes.has(resolved))resolved='start';
+    if(!hasBook()&&!isEmptyRoute(resolved))resolved='start';
     if(resolved==='allocate'){
       const currency=ui.receiptSourceId?entity(state,'fundingSources',ui.receiptSourceId).currencyCode:ui.range.currencyCode,template=currentTemplate(currency);
       if(template)resolved='allocations/new/'+template.currentVersionId;else{resolved='recipes';ui.flash='chooseMethodFirst';}
@@ -238,14 +239,14 @@ export async function createNextApp(root,{document = globalThis.document,browser
     if(route==='history')return historyScreen(c);
     if(route==='more')return moreScreen(c);
     if(route==='shared'){if(!sharedView)sharedView=createSharedView(document,browser);return [sharedView.element];}
-    return helpScreen(c);
+    return helpScreen(c,parts[0]==='help'?parts[1]||'':'');
   }
   async function render(){
     if(!state)return;
     const restoreFilterFocus=!!activeFilterModal;
     formHandlers.clear();
     t=translator(state.profile.locale);document.documentElement?.setAttribute('lang',state.profile.locale.startsWith('en')?'en':'vi');
-    if(hasBook()&&['start','create'].includes(route))route='overview';if(!hasBook()&&!emptyRoutes.has(route))route='start';
+    if(hasBook()&&['start','create'].includes(route))route='overview';if(!hasBook()&&!isEmptyRoute(route))route='start';
     const parts=route.split('/');let body;
     try{body=await screenFor(parts);}
     catch(cause){feedback=errorMessage(cause,t);error=true;body=[title('errorDetails'),actionRow(action('reload',refresh,true),action('back',()=>go('overview')))];}
@@ -273,6 +274,6 @@ export async function createNextApp(root,{document = globalThis.document,browser
   browser?.addEventListener?.('focus',()=>{if(state&&!pendingWrite)repo.readSnapshot().then(next=>{if(next.datasetId!==state.datasetId||next.revision!==state.revision){feedback=t('conflict');error=false;updateFeedback();}}).catch(fail);});
   const initialRoute=resolveRoute(browser?.location?.hash);
   await openNamespace(namespace);
-  if(hasBook()&&browser?.location?.hash)await go(initialRoute);else if(!hasBook()&&['help','data','data-review'].includes(initialRoute))await go(initialRoute);
+  if(hasBook()&&browser?.location?.hash)await go(initialRoute);else if(!hasBook()&&(['help','data','data-review'].includes(initialRoute)||initialRoute.startsWith('help/')))await go(initialRoute);
   return {go,goBack,dismissFilters,handleNativeBack:async()=>{if(pendingWrite||setupSubmission)return true;if(dismissFilters())return true;if(route==='overview'||route==='start')return false;await goBack();return true;},refresh,render,perform,snapshot:()=>structuredClone(state),currentRoute:()=>route,openNamespace,submit:async(formId,values)=>{if(!document.getElementById(formId)||!formHandlers.has(formId))throw new Error('FORM_NOT_VISIBLE');return formHandlers.get(formId)(values);},close(){releaseFilterModal();unsubscribe?.();repo?.close?.();}};
 }

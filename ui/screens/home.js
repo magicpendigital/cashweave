@@ -3,6 +3,7 @@ import { addDays } from '../../core/calendar.js';
 import { entity, poolSummary } from '../../core/model.js';
 import { reportDescriptor } from '../../core/reports.js';
 import { netWorthOf } from './assets.js';
+import { gettingStartedCard } from './guide.js';
 
 // Shared row pieces for Home and Kế hoạch: date badge, plan meta and the inline "Đã trả" action.
 export function planRow(c,p,{compact=false}={}){
@@ -55,6 +56,7 @@ export async function homeScreen(c){
       h('div',{class:'hero-tiles'},
         h('button',{type:'button',class:'hero-tile','data-metric':'actualIncome',onClick:drill('ActualIncome',income)},h('span',{},t('incomeMonth')+' '+monthNo),h('strong',{class:'num','data-amount':'income'},fmtSigned(income.totalMinor,currency))),
         h('button',{type:'button',class:'hero-tile','data-metric':'actualExpense',onClick:drill('ActualExpense',expense)},h('span',{},t('expenseMonth')+' '+monthNo),h('strong',{class:'num','data-amount':'expense'},(minor(expense.totalMinor)>0n?'−':'')+fmt(expense.totalMinor,currency))))),
+    gettingStartedCard(c),
     minor(unassigned)<0n?overAllocatedCard(c,unassigned,currency):minor(unassigned)>0n?link('allocate',[icon('split'),h('span',{class:'grow'},h('strong',{},fmt(unassigned,currency)+' '+t('unassignedSuggest')),' '+t('splitPrompt')),icon('chevron')],{class:'suggest','data-suggest':'allocate'}):null,
     backup.stale&&state.operations.length>1?h('section',{class:'card warn-card','data-backup-reminder':'home'},h('p',{class:'warn-title'},backup.days===null?t('backupNever'):fill(t('backupLast'),{n:backup.days})),h('p',{},t('backupWarn')),action('backupNow',c.exportBackup,false,{class:'button warn-button'})):null,
     h('section',{class:'card list-card'},h('div',{class:'section-heading'},h('h2',{},t('dueSoon')),link('plans',t('seeCalendar'),{class:'text-link'})),due.length?due.map(p=>planRow(c,p,{compact:true})):h('p',{class:'muted'},t('noUpcomingShort'))),

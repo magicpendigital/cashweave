@@ -1,5 +1,6 @@
 import { minor, sum, parseMoney } from '../../core/money.js';
 import { coreNetWorth, FEATURES } from '../features.js';
+import { helpLink } from './guide.js';
 
 const GROUP_ORDER=['BANK','CASH','E_WALLET','INVESTMENT'];
 const GROUP_LABEL={BANK:'bankType',CASH:'cashType',E_WALLET:'eWalletType',INVESTMENT:'investmentType'};
@@ -28,7 +29,7 @@ export function assetsScreen(c){
   const positive=sum(worth.groups.map(g=>minor(g.totalMinor)>0n?g.totalMinor:'0'));
   const investments=state.accounts.filter(a=>a.type==='INVESTMENT'&&!a.archivedAtUtc);
   const meta=(account,row)=>account.type!=='INVESTMENT'?(worth.spendableIds.has(account.id)?t('spendableMeta')+' · ':'')+t(GROUP_LABEL[account.type]||'account'):!row.valuedAt?t('notValued'):row.stale?fill(t('staleValue'),{n:daysBetween(row.valuedAt,today())}):row.valuedAt===today()?t('valuedToday'):fill(t('valuedDaysAgo'),{n:daysBetween(row.valuedAt,today())});
-  return [title('netWorthTitle'),
+  return [h('div',{class:'page-head with-help'},h('h1',{},t('netWorthTitle')),helpLink(c,'assets')),
     h('section',{class:'card'},h('p',{class:'muted'},t('netWorth')),h('p',{class:'big-number num','data-amount':'networth'},fmt(worth.totalMinor,currency)),
       h('div',{class:'stack-bar','aria-hidden':'true'},worth.groups.map((g,i)=>h('span',{class:'seg-'+i,style:'width:'+Math.max(2,share(g.totalMinor,positive))+'%'}))),
       h('ul',{class:'legend'},worth.groups.map((g,i)=>h('li',{},h('span',{class:'swatch seg-'+i}),h('span',{class:'grow'},t(GROUP_LABEL[g.type])),h('strong',{class:'num'},share(g.totalMinor,positive).toLocaleString(state.profile.locale)+'%'))))),

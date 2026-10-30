@@ -6,6 +6,7 @@ import {nextHarness} from './next-ui-harness.mjs';
 import {accountBalance,envelopeBalance,planSummary,poolSummary,validateSnapshot} from '../core/model.js';
 import {translator,errorMessage} from '../ui/i18n.js';
 import {resolveRoute} from '../ui/app.js';
+import {GUIDE_TOPICS,topicById} from '../ui/screens/guide.js';
 const t=translator();
 async function ready(options={},opening='0'){const h=await nextHarness(options);await h.app.go('create');await h.submit('onboard-form',{locale:'vi-VN',currencyCode:'VND',timezoneId:'Asia/Ho_Chi_Minh',name:'Synthetic redesign bank',accountType:'BANK',opening,openingDate:'2026-10-01'});return h;}
 const formValues=(h,id)=>Object.fromEntries(new h.browser.FormData(h.get(id)));
@@ -135,4 +136,26 @@ test('saving a form moves the hash to the destination so refresh or Back never r
 });
 test('every new core error code from plan 4.4 has its own Vietnamese message',()=>{
  for(const code of ['REVERSAL_BEFORE_LINK','VALUATION_DATE_IN_FUTURE','VALUATION_TOTAL_MISMATCH','INVALID_VALUATION_QUANTITY','INVALID_VALUATION_PRICE','INVALID_VALUATION_LINE','INVALID_VALUATION_LINES','INVALID_VALUATION_AMOUNT','VALUATION_VALUE_REQUIRED','VALUATION_REQUIRES_INVESTMENT_ACCOUNT','UNKNOWN_RECIPE_PRESET','UNKNOWN_RECIPE_LINE','INVALID_RECIPE_OVERRIDES','INVALID_SPEND_LINKS','INVALID_STALE_DAYS','ENVELOPE_INSUFFICIENT']){const text=errorMessage(new Error(code),t);assert.notEqual(text,t('genericError'),code);assert.ok(!/[A-Z_]{6,}/.test(text),code);}
+});
+test('guide: welcome card opens an index that explains the design, and topic pages deep-link before a book exists',async()=>{
+ const h=await nextHarness({hash:'#help/jars'});assert.equal(h.app.currentRoute(),'help/jars');assert.ok(h.text().includes(topicById('jars').title));assert.ok(h.button(t('beginCreate')),'no book: topic offers to create one');
+ await h.app.go('start');assert.ok(h.get('start-guide').textContent.includes(t('guideCardTitle')));await h.get('start-guide').click();assert.equal(h.app.currentRoute(),'help');
+ for(const key of ['guideIdeas','guideTabs','guideQuick','guideTopics','guideFaq','guideGlossary'])assert.ok(h.text().includes(t(key)),key);
+ assert.equal(h.root.querySelectorAll('[data-topic]').length,GUIDE_TOPICS.length);assert.ok(h.root.querySelectorAll('summary').length>=5);
+ await h.root.querySelector('[data-topic="start"]').click();assert.equal(h.app.currentRoute(),'help/start');await h.root.querySelector('[data-next-topic="record"]').click();assert.equal(h.app.currentRoute(),'help/record');
+ await h.app.go('help/unknown-topic');assert.ok(h.text().includes(t('guideFaq')),'unknown topic falls back to the index');assert.equal(h.app.snapshot().revision,0);h.app.close();
+});
+test('Home "Làm quen" checklist tracks real progress, opens each step and can be hidden for good',async()=>{
+ const h=await ready({},'1.000');const card=()=>h.root.querySelector('[data-getting-started]');
+ assert.ok(card());assert.ok(card().textContent.includes('0/5'));
+ await h.root.querySelector('[data-gs-step="guide"]').click();assert.equal(h.app.currentRoute(),'help');await h.app.go('overview');assert.ok(card().textContent.includes('1/5'));assert.equal(h.root.querySelector('[data-gs-step="guide"]').disabled,true);
+ await record(h,{amount:'100'});await h.app.go('overview');assert.ok(card().textContent.includes('2/5'));
+ await h.root.querySelector('[data-gs-step="method"]').click();assert.equal(h.app.currentRoute(),'recipes');await h.app.go('overview');
+ await h.root.querySelector('[data-gs-hide]').click();assert.equal(card(),null);assert.equal(JSON.parse(h.prefStore.get('cashweave-ui-personal')).gettingStartedHidden,true);
+ await h.app.go('transactions');await h.app.go('overview');assert.equal(card(),null,'stays hidden');h.app.close();
+});
+test('Kế hoạch, Hũ, phương pháp and Tổng tài sản each link to their guide topic; Thêm lists the guide first',async()=>{
+ const h=await ready();
+ for(const [route,topic] of [['plans','plans'],['funds','jars'],['recipes','methods'],['assets','assets']]){await h.app.go(route);const chip=h.root.querySelector('[data-help="'+topic+'"]');assert.ok(chip,route);await chip.click();assert.equal(h.app.currentRoute(),'help/'+topic);}
+ await h.app.go('more');assert.equal(h.root.querySelectorAll('[data-menu]')[0].getAttribute('data-menu'),'help');h.app.close();
 });

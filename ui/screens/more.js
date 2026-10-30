@@ -14,10 +14,10 @@ function backupCard(c,{compact=false}={}){
 export function moreScreen(c){
   const {h,t,fill,action,namespace}=c,state=c.state;
   const toggle=(label,help)=>h('div',{class:'menu-row static'},h('div',{class:'grow'},h('p',{class:'row-title'},t(label),' ',h('span',{class:'tag'},t('comingSoon'))),h('p',{class:'row-meta'},t(help))),h('button',{type:'button',class:'switch',role:'switch','aria-checked':'false','aria-disabled':'true',disabled:true,'aria-label':t(label)+' · '+t('comingSoon')},h('span',{class:'knob'})));
-  return [h('h1',{},t('more')),backupCard(c),
+  return [h('h1',{},t('more')),h('section',{class:'card list-card guide-entry'},menuRow(c,'help','help',{meta:t('guideMeta'),iconName:'help'})),backupCard(c),
     h('h2',{class:'group-title'},t('yourMoney')),h('section',{class:'card list-card'},menuRow(c,'assets','assetsAndAccounts',{meta:fill(t('itemsCount'),{n:state.accounts.filter(a=>!a.archivedAtUtc).length})}),menuRow(c,'accounts','accounts'),menuRow(c,'reports','reports'),menuRow(c,'categories','categories'),menuRow(c,'forecast','menuForecast')),
     h('h2',{class:'group-title'},t('security')),h('section',{class:'card list-card'},toggle('appLock','appLockHelp'),toggle('screenShield','screenShieldHelp')),
-    h('h2',{class:'group-title'},t('dataSection')),h('section',{class:'card list-card'},menuRow(c,'data','settingsData'),menuRow(c,'history','history'),menuRow(c,'help','help')),
+    h('h2',{class:'group-title'},t('dataSection')),h('section',{class:'card list-card'},menuRow(c,'data','settingsData'),menuRow(c,'history','history')),
     h('div',{class:'actions'},action(namespace==='sandbox'?'returnPersonal':'trySandbox',()=>c.openNamespace(namespace==='sandbox'?'personal':'sandbox'),false,{class:'button text-button'}))];
 }
 const periodPostingAmount=(c,accountId)=>{const r=c.ui.range;return sum(c.state.postings.filter(p=>p.accountId===accountId&&p.effectiveLocalDate>=r.from&&p.effectiveLocalDate<=r.through).map(p=>p.signedAmountMinor));};
@@ -102,9 +102,4 @@ export function historyScreen(c){
   const formatter=new Intl.DateTimeFormat(state.profile.locale,{dateStyle:'short',timeStyle:'short',timeZone:state.profile.timezoneId});
   const rows=[...state.audit].reverse().map(entry=>[formatter.format(new Date(entry.atUtc)),t(labels[entry.type]||'details'),String(entry.revision)]);
   return [title('history'),notice('historyHelp'),card(rows.length?table([t('date'),t('details'),t('revision')],rows):empty())];
-}
-export function helpScreen(c){
-  const {h,t,card,action,go,hasBook}=c,steps=[['guideStep1','guideStep1Help'],['guideStep2','guideStep2Help'],['guideStep3','guideStep3Help'],['guideStep4','guideStep4Help']];
-  return [c.title('help'),h('p',{class:'muted'},t('guideIntro')),h('ol',{class:'guide-steps'},steps.map(([heading,body],index)=>h('li',{class:'card'},h('span',{class:'step-number','aria-hidden':'true'},String(index+1)),h('h2',{},t(heading)),h('p',{},t(body))))),h('div',{class:'actions'},hasBook()?action('overview',()=>go('overview'),true):action('beginCreate',()=>go('create'),true),!hasBook()?action('returnStart',()=>go('start')):null),
-    card(h('dl',{class:'glossary'},h('dt',{},t('account')+' / '+t('envelope')),h('dd',{},t('budgetExplain')),h('dt',{},t('allocate')),h('dd',{},t('allocationHelp')),h('dd',{},t('monthlyHelp')),h('dt',{},t('plans')),h('dd',{},t('planExplain')),h('dt',{},t('transfer')),h('dd',{},t('transferExplain')),h('dt',{},t('data')),h('dd',{},t('backupExplain')),h('dd',{},t('plaintext'))))];
 }

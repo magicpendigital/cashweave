@@ -3,10 +3,11 @@ import { addDays } from '../../core/calendar.js';
 import { entity, accountBalance, planSummary } from '../../core/model.js';
 import { queryReport, reportDescriptor } from '../../core/reports.js';
 import { planRow } from './home.js';
+import { helpLink } from './guide.js';
 
 export function planTabs(c,active){
   const {h,t,run,go}=c;
-  return [h('h1',{},t('planning')),h('nav',{class:'segmented','aria-label':t('planning')},[['plans','plans'],['funds','funds']].map(([key,label])=>h('a',{href:'#'+key,class:'seg'+(active===key?' on':''),'aria-current':active===key?'page':null,'data-plan-tab':key,onClick:run(()=>go(key))},t(label))))];
+  return [h('div',{class:'page-head with-help'},h('h1',{},t('planning')),helpLink(c,active==='funds'?'jars':'plans')),h('nav',{class:'segmented','aria-label':t('planning')},[['plans','plans'],['funds','funds']].map(([key,label])=>h('a',{href:'#'+key,class:'seg'+(active===key?' on':''),'aria-current':active===key?'page':null,'data-plan-tab':key,onClick:run(()=>go(key))},t(label))))];
 }
 
 // Screen 6 · Kế hoạch › Sắp đến hạn: month-end outlook, overdue first, then month groups with "Đã trả".

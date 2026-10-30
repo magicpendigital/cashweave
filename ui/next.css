@@ -296,3 +296,41 @@ td.amount,th.amount{text-align:right;white-space:nowrap}td a{font-weight:600}
 @media(max-width:380px){:root{--gutter:16px}.hero-main strong{font-size:30px}.amount-display .amount-input,.amount-sign{font-size:34px}.tiles.three{grid-template-columns:1fr 1fr}}
 @media(prefers-reduced-motion:no-preference){.button,.chip,.seg,.tab-item{transition:background .15s,border-color .15s,color .15s}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+/* Hướng dẫn: welcome card, Home checklist, guide index and topic pages. */
+.guide-card{display:flex;align-items:center;gap:12px;padding:14px 16px;margin:4px 0 8px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);color:var(--text);text-decoration:none}
+.guide-card strong{display:block}.guide-card .row-meta{display:block;margin:2px 0 0}
+.guide-card .benefit-icon{flex:none}
+.guide-entry{margin-bottom:12px}
+.page-head.with-help{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.help-chip{display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:0 12px;border-radius:18px;background:var(--brand-soft);color:var(--brand);font-size:var(--fs-1);font-weight:600;text-decoration:none;flex:none}
+.help-chip .nav-icon{width:18px;height:18px}
+.getting-started{border-color:var(--brand)}
+.gs-bar{height:6px;border-radius:3px;background:var(--brand-soft);overflow:hidden;margin:4px 0 8px}.gs-bar span{display:block;height:100%;background:var(--brand)}
+.gs-list{list-style:none;margin:0 0 4px;padding:0}
+.gs-step{display:flex;align-items:center;gap:12px;width:100%;min-height:48px;padding:6px 0;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--text);font:inherit;text-align:left;cursor:pointer}
+.gs-list li:last-child .gs-step{border-bottom:0}
+.gs-check{flex:none;display:inline-grid;place-items:center;width:24px;height:24px;border-radius:12px;border:2px solid var(--line);color:#fff;font-size:14px;font-weight:700}
+.gs-list li.done .gs-check{background:var(--brand);border-color:var(--brand)}
+.gs-list li.done .gs-step{color:var(--text-2);text-decoration:line-through;cursor:default}
+.guide-model .benefits{margin:8px 0 12px}
+.guide-equation{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:12px;border-radius:var(--radius-s);background:var(--bg)}
+.eq-term{padding:4px 10px;border-radius:8px;background:var(--brand-soft);color:var(--brand);font-weight:600;font-size:var(--fs-1)}
+.eq-term.blue{background:var(--blue-bg);color:var(--blue)}.eq-term.amber{background:var(--warn-bg);color:var(--warn)}
+.eq-op{font-weight:700;color:var(--text-2)}
+.guide-tabs{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+.guide-tabs li,.guide-steps li{display:flex;gap:12px;align-items:flex-start}
+.guide-tabs p,.guide-steps p{margin:2px 0 0;color:var(--text-2)}
+.guide-tab-icon{flex:none;display:inline-grid;place-items:center;width:36px;height:36px;border-radius:10px;background:var(--bg);color:var(--brand)}
+.guide-tab-icon.fab{border-radius:18px;background:var(--brand);color:#fff}
+.guide-steps .step-number{flex:none;margin:0}
+.topic-icon{flex:none;display:inline-grid;place-items:center;width:36px;height:36px;border-radius:10px;background:var(--brand-soft);color:var(--brand)}
+.topic-icon.large{width:48px;height:48px;border-radius:14px;margin-bottom:8px}
+.menu-row .row-title,.menu-row .row-meta{display:block}.menu-row .row-meta{font-weight:400}
+.menu-row[data-topic]{padding:10px 0;align-items:center}.menu-row .topic-icon .nav-icon{width:20px;height:20px;color:var(--brand)}
+.faq{border-bottom:1px solid var(--line);padding:2px 0}.faq:last-child{border-bottom:0}
+.faq summary{min-height:48px;display:flex;align-items:center;font-weight:600;cursor:pointer}
+.faq p{margin:0 0 12px;color:var(--text-2)}
+.guide-section h2{margin-top:0}
+.guide-substeps{margin:8px 0;padding-left:22px}.guide-substeps li{margin:6px 0}
+.guide-tip{display:flex;gap:8px;align-items:flex-start;margin:12px 0 0;padding:10px 12px;border-radius:var(--radius-s);background:var(--brand-soft);color:var(--text)}
+.guide-tip .nav-icon{flex:none;width:18px;height:18px;margin-top:2px;color:var(--brand)}

@@ -24,6 +24,7 @@ const files = new Map([
   ['/ui/screens/funds.js', ['ui/screens/funds.js', 'text/javascript; charset=utf-8']],
   ['/ui/screens/more.js', ['ui/screens/more.js', 'text/javascript; charset=utf-8']],
   ['/ui/screens/assets.js', ['ui/screens/assets.js', 'text/javascript; charset=utf-8']],
+  ['/ui/screens/guide.js', ['ui/screens/guide.js', 'text/javascript; charset=utf-8']],
   ['/core/recipes.js', ['core/recipes.js', 'text/javascript; charset=utf-8']],
   ['/core/allocation.js', ['core/allocation.js', 'text/javascript; charset=utf-8']],
   ['/core/calendar.js', ['core/calendar.js', 'text/javascript; charset=utf-8']],

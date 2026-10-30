@@ -7,6 +7,7 @@ import { id } from '../../core/identity.js';
 import { RECIPE_PRESETS } from '../features.js';
 import { planTabs } from './plans.js';
 import { overAllocatedCard } from './home.js';
+import { helpLink } from './guide.js';
 
 const SEGMENTS=6;
 const percentText=(bps,locale)=>(bps/100).toLocaleString(locale,{maximumFractionDigits:2});
@@ -102,7 +103,7 @@ export function recipesScreen(c){
   const mine=state.templates.filter(tp=>!tp.archivedAtUtc).map(template=>{const version=entity(state,'templateVersions',template.currentVersionId),isCurrent=current?.id===template.id;
     return h('section',{class:'card method-card'+(isCurrent?' on':''),'data-template':template.id},h('div',{class:'fund-head'},h('strong',{},template.name),isCurrent?h('span',{class:'tag tag-green'},t('inUse')):null),h('p',{class:'muted'},version.lines.map((l,i)=>entity(state,'envelopes',l.envelopeId).name+' '+(l.type==='FIXED'?fmt(l.fixedAmountMinor,version.currencyCode):percentText(l.percentageBps,locale)+'%')).join(' · ')+' · '+version.currencyCode),
       h('div',{class:'actions'},action('useTemplate',()=>{if(templateBlocked(state,version))throw new Error('TEMPLATE_ENVELOPE_ARCHIVED');if(version.migrationNeedsEnvelopeMapping)throw new Error('MIGRATION_MAPPING_REQUIRED');return go('allocations/new/'+version.id);},true,{disabled:c.pending||!!selected&&(selectedCurrency!==version.currencyCode||minor(sourceCapacity(state,selected.id).remaining)<=0n)}),action('editTemplate',()=>{ui.templateDraft=null;return go('templates/'+template.id+'/edit');})));});
-  return [c.title('templates'),flash?notice(flash,true):null,h('p',{class:'muted'},t('recipesIntro')),selectedReceiptCard(c),
+  return [h('div',{class:'page-head with-help'},h('h1',{},t('templates')),helpLink(c,'methods')),flash?notice(flash,true):null,h('p',{class:'muted'},t('recipesIntro')),selectedReceiptCard(c),
     presets.length?presetCards:notice('presetsUnavailable'),
     mine.length?[h('h2',{class:'group-title'},t('yourMethods')),mine]:null,
     link('templates/new',[c.icon('add'),h('span',{},t('createOwn'))],{class:'button dashed wide'}),
