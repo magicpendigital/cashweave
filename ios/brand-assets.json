@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Exact Android brand vector converted to opaque iOS PNG assets; no redesign",
+  "source": {
+    "path": "android/app/src/main/res/drawable/ic_launcher.xml",
+    "sha256": "3c3f4b82bdbb5575cf5cdd3216bbff3d7374148866fd3195006345317ef07a60"
+  },
+  "generator": {
+    "path": "scripts/render-ios-brand.mjs",
+    "sha256": "d8869b1b590d75dcb614fd06781be97b862a28f47bda938aef11bb1e8093fd23"
+  },
+  "renderer": {
+    "sharp": "0.35.5",
+    "vips": "8.18.7",
+    "rsvg": "2.63.2"
+  },
+  "launch": {
+    "pointSize": 128,
+    "contentMode": "scaleAspectFit",
+    "background": "#f5f8f3",
+    "layout": "centered with fixed width and height; no cropping"
+  },
+  "files": [
+    {
+      "path": "ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png",
+      "width": 1024,
+      "height": 1024,
+      "opaque": true,
+      "sha256": "24adc1eb88c73b496a8536ec6f8689ecda09648c657d30092bad0dd1bef376f5"
+    },
+    {
+      "path": "ios/App/App/Assets.xcassets/Splash.imageset/cashweave-splash.png",
+      "width": 128,
+      "height": 128,
+      "opaque": true,
+      "sha256": "f1cbbfd88ba1494006cb2dc737a955394e1acf24e125e1b9c5220066ed9cd969"
+    },
+    {
+      "path": "ios/App/App/Assets.xcassets/Splash.imageset/cashweave-splash@2x.png",
+      "width": 256,
+      "height": 256,
+      "opaque": true,
+      "sha256": "decbcdf960a457534b4b8c5069d23dd0805d97bbb01ce4ed233f2bdced9aba6f"
+    },
+    {
+      "path": "ios/App/App/Assets.xcassets/Splash.imageset/cashweave-splash@3x.png",
+      "width": 384,
+      "height": 384,
+      "opaque": true,
+      "sha256": "66ed4a60be04a24ea64858a61e9b69507ec1419a912a2b61571c85f8fa4b6e9d"
+    }
+  ]
+}

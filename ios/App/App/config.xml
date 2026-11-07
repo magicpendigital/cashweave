@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<widget id="app.cashweave.offline.trial" version="0.4.1" xmlns="http://www.w3.org/ns/widgets">
+  <name>CashWeave Trial</name>
+  <access origin="capacitor://localhost" />
+</widget>

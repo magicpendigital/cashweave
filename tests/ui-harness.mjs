@@ -5,7 +5,8 @@ import vm from 'node:vm';
 import { reviewArtifactUrl } from '../scripts/review-output.mjs';
 const html = await readFile(reviewArtifactUrl('financial-assistant-couples-demo.html'), 'utf8');
 const code = /<script>([\s\S]*?)<\/script>/.exec(html)[1];
-const injected = code.replace(/\nrender\(\);\n/, `\nglobalThis.testUI = { getState: () => state, getDraft: () => allocationDraft, render, setView, openTransactionModal, openLaterAllocation, openTemplateEditor, beginAllocationEditor, showAllocationPreview, updateBudgetField, saveTransactionForm, persistAndRender, openRestoreModal, previewRestore, downloadCurrentBackup, confirmRestore, performUndo, handleSubmit, renderAllocations, renderData, closeModal };\nrender();\n`);
+const injected = code.replace(/\r?\nrender\(\);\r?\n/, `\nglobalThis.testUI = { getState: () => state, getDraft: () => allocationDraft, render, setView, openTransactionModal, openLaterAllocation, openTemplateEditor, beginAllocationEditor, showAllocationPreview, updateBudgetField, saveTransactionForm, persistAndRender, openRestoreModal, previewRestore, downloadCurrentBackup, confirmRestore, performUndo, handleSubmit, renderAllocations, renderData, closeModal };\nrender();\n`);
+if (injected === code) throw new Error('Legacy UI harness hook was not found in the current bundle');
 const decode = value => value.replace(/&quot;/g,'"').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#39;/g,"'").replace(/&amp;/g,'&');
 export function harness({ values = new Map(), failWrite = false, lockRequest, locks = true, protocol = 'http:' } = {}) {
   const nodes = new Map(); const listeners = new Map(); const downloads = []; let htmlCounter = 0;

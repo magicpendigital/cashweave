@@ -175,7 +175,7 @@ test('provider I/O is isolated, bounded and atomically settled on interruption',
 
 test('native Back has startup readiness and per-request bounded fallback', async () => {
   const source = await read('android/app/src/main/java/app/cashweave/offline/trial/MainActivity.java');
-  assert.match(source, /getBridge\(\) == null \|\| !nativeReady/);
+  assert.match(source, /getBridge\(\) == null \|\| !startup\.isReady\(\)/);
   assert.match(source, /backHandler.postDelayed/);
   assert.match(source, /pendingBack == requestId/);
   assert.match(source, /pendingBack = 0/);

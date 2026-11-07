@@ -23,11 +23,11 @@ const LocalBackup = registerPlugin('LocalBackup');
 let app = null;
 window.addEventListener('cashweaveNativeBack', createNativeBackHandler(LocalBackup, () => app, showStatus));
 
-if (Capacitor.getPlatform() !== 'android' || !Capacitor.isPluginAvailable('LocalBackup')) {
+if (!['android', 'ios'].includes(Capacitor.getPlatform()) || !Capacitor.isPluginAvailable('LocalBackup')) {
   root.replaceChildren();
-  showStatus('Bản Android chưa mở được cầu nối lưu tệp. Hãy giữ nguyên dữ liệu và dùng bản HTML để thử riêng với dữ liệu giả.', true);
+  showStatus('Chưa mở được cầu nối lưu tệp của ứng dụng. Hãy giữ nguyên dữ liệu và mở lại ứng dụng; không xóa hay cài lại ứng dụng.', true);
 } else {
-  const backup = createNativeBackupAdapter(LocalBackup, showStatus);
+  const backup = createNativeBackupAdapter(LocalBackup, showStatus, () => nativeFeedback.replaceChildren());
   const showInterruption = () => showStatus('Thao tác tệp đã bị gián đoạn. Tệp có thể trống, chưa đầy đủ hoặc đã được ghi; hãy kiểm tra trước khi dùng. Dữ liệu trong ứng dụng không đổi.', true);
   LocalBackup.addListener('backupInterrupted', showInterruption).then(() => LocalBackup.consumeInterruption()).then(result => {
     if (result.interrupted) showInterruption();

@@ -1,6 +1,7 @@
 // Synthetic DOM execution adapter; this does not verify browser layout or IndexedDB.
 import { createNextApp } from '../ui/app.js';
 import { createMemoryRepository } from '../core/repository.js';
+import { createMemorySharedRepository } from '../core/shared-repository.js';
 import { createDataset } from '../core/model.js';
 class Node {
   constructor(tag='',text=''){this.tagName=tag.toUpperCase();this.children=[];this.parentNode=null;this.attributes=new Map();this.listeners=new Map();this._text=text;this._value=undefined;this.files=[];this.style={};this.inert=false;}
@@ -27,11 +28,19 @@ export async function nextHarness({initial,hash='',failWrite=false,legacyRaw=nul
   const documentElement=new Node('html'),body=new Node('body'),root=new Node('div');root.id='next-app';documentElement.append(body);body.append(root);
   const document={documentElement,body,createElement:tag=>Object.assign(new Node(tag),{ownerDocument:document}),createTextNode:text=>Object.assign(new Node('',text),{ownerDocument:document}),getElementById:id=>documentElement.querySelector('#'+id),querySelectorAll:s=>documentElement.querySelectorAll(s)};
   for(const node of [documentElement,body,root])node.ownerDocument=document;document.activeElement=body;
-  class FormData {constructor(form){this.entries=form.querySelectorAll('[name]').filter(n=>n.type!=='checkbox'||n.checked).map(n=>[n.name,n.value]);}[Symbol.iterator](){return this.entries[Symbol.iterator]();}}
+  class FormData {constructor(form){this.values=form.querySelectorAll('[name]').filter(n=>n.type!=='checkbox'||n.checked).map(n=>[n.name,n.value]);}[Symbol.iterator](){return this.values[Symbol.iterator]();}get(key){return this.values.find(([name])=>name===key)?.[1]??null;}has(key){return this.values.some(([name])=>name===key);}entries(){return this.values[Symbol.iterator]();}}
   const browserListeners=new Map();let reloads=0;
   const browser={matchMedia:query=>({matches:viewportWidth<=Number(query.match(/max-width:\s*(\d+)/)?.[1]||0)}),location:{hash,reload(){reloads++;}},FormData,addEventListener(type,fn){browserListeners.set(type,[...(browserListeners.get(type)||[]),fn]);},async emit(type){for(const fn of browserListeners.get(type)||[])await fn();}};
-  const repositories=new Map(),downloads=[];
+  const repositories=new Map(),sharedRepositories=new Map(),sharedSnapshots=new Map(),sharedClosed=new Set(),downloads=[];
   const factory=async({namespace})=>{if(!repositories.has(namespace)){const repository=createMemoryRepository(namespace==='personal'&&initial?initial:createDataset({namespace}));if(failWrite){const original=repository.runAtomicCommand;repository.runAtomicCommand=(...args)=>original(args[0],args[1],{...args[2],failBeforeCommit:true});}repositories.set(namespace,repository);}return repositories.get(namespace);};
-  const app=await appFactory(root,{document,browser,repositoryFactory:factory,clock,legacyStorage:{getItem:key=>key==='financial-assistant-prototype-v1'?legacyRaw:null},onDownload:(text,name)=>downloads.push({text,name}),...appOptions});
-  return {app,root,document,browser,repositories,downloads,reloads:()=>reloads,get:id=>document.getElementById(id),button:text=>root.querySelectorAll('button').find(n=>n.textContent===text),setForm(formId,values){for(const control of document.getElementById(formId).querySelectorAll('[name]'))if(Object.hasOwn(values,control.name))control.value=values[control.name];},async submit(formId,values){this.setForm(formId,values);return app.submit(formId,values);},text:()=>root.textContent};
+  const sharedFactory=async({namespace})=>{
+    if(!sharedRepositories.has(namespace)||sharedClosed.has(namespace)){
+      const repository=createMemorySharedRepository({namespace,...(sharedSnapshots.has(namespace)?{initialSnapshot:sharedSnapshots.get(namespace)}:{})});sharedClosed.delete(namespace);
+      for(const method of ['readSnapshot','execute','activateStage','rollback']){const original=repository[method].bind(repository);repository[method]=async(...args)=>{const value=await original(...args);if(value?.datasetId&&value?.schemaVersion===1)sharedSnapshots.set(namespace,structuredClone(value));return value;};}
+      const close=repository.close.bind(repository);repository.close=()=>{sharedClosed.add(namespace);close();};sharedRepositories.set(namespace,repository);
+    }
+    return sharedRepositories.get(namespace);
+  };
+  const app=await appFactory(root,{document,browser,repositoryFactory:factory,sharedRepositoryFactory:sharedFactory,clock,legacyStorage:{getItem:key=>key==='financial-assistant-prototype-v1'?legacyRaw:null},onDownload:(text,name)=>downloads.push({text,name}),...appOptions});
+  return {app,root,document,browser,repositories,sharedRepositories,downloads,reloads:()=>reloads,get:id=>document.getElementById(id),button:text=>root.querySelectorAll('button').find(n=>n.textContent===text),setForm(formId,values){for(const control of document.getElementById(formId).querySelectorAll('[name]'))if(Object.hasOwn(values,control.name))control.value=values[control.name];},async submit(formId,values){this.setForm(formId,values);return app.submit(formId,values);},text:()=>root.textContent};
 }

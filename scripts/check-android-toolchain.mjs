@@ -5,8 +5,8 @@ const probe = (command, args) => {
   // Windows Gradle is a .bat launcher; use the system command processor for
   // these fixed tool names/arguments, including synthetic test launchers.
   const result = process.platform === 'win32'
-    ? spawnSync(process.env.ComSpec || 'C:\\Windows\\System32\\cmd.exe', ['/d', '/c', command, ...args], { encoding: 'utf8' })
-    : spawnSync(command, args, { encoding: 'utf8' });
+    ? spawnSync(process.env.ComSpec || 'C:\\Windows\\System32\\cmd.exe', ['/d', '/c', command, ...args], { encoding: 'utf8', timeout: 8000, killSignal: 'SIGKILL', windowsHide: true })
+    : spawnSync(command, args, { encoding: 'utf8', timeout: 8000, killSignal: 'SIGKILL' });
   return { available: !result.error && result.status === 0, exitCode: result.status, output: ((result.stdout || '') + (result.stderr || '')).trim() };
 };
 const sdk = process.env.ANDROID_SDK_ROOT || process.env.ANDROID_HOME || '';

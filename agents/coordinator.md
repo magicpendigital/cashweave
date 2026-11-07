@@ -6,11 +6,11 @@
 
 **Cách làm:**
 
-1. Giao từng việc với cổng **A0 hoặc A1**, tệp được sửa, đầu ra và cách nghiệm thu. Chia việc độc lập để tránh ghi đè.
+1. Giao từng việc với requirement/cổng hiện hành trong `docs/development-plan.md`, tệp được sửa, đầu ra và cách nghiệm thu. Chia việc độc lập để tránh ghi đè. A0/A1 chỉ ghi lịch sử prototype.
 2. Nhận bàn giao từ người tạo mẫu; chuyển bản chạy cho review độc lập và QA. Giữ một danh sách lỗi với trạng thái mở, đang sửa, cần kiểm tra lại, đã đóng.
-3. Với **A0**, kiểm tra đúng các luồng đang có và công bố rõ giới hạn. Không ghi “đã đối soát” hoặc “sẵn sàng dùng dữ liệu thật”.
-4. Với **A1 chưa hoàn thành**, chỉ nghiệm thu sau khi sửa giao dịch, xem trước CSV, đối soát, xuất/sao lưu/khôi phục và tạo tài sản mới qua QA bằng dữ liệu giả lập.
+3. Đối chiếu từng luồng với source, model dữ liệu và kiểm chứng đã thực chạy; phân biệt Node/VM, browser, native compile và thiết bị. Không ghi “sẵn sàng dùng dữ liệu thật” từ test giả lập.
+4. Chỉ nghiệm thu cổng tương ứng khi đủ bằng chứng; giữ migration blocker, kiểm recovery sau restart và bảo toàn dữ liệu tương thích. Native/device/owner còn thiếu phải ghi BLOCKED.
 
-**Đầu ra/bàn giao:** danh sách tệp và chức năng đã được kiểm, lỗi còn lại, kết quả cổng A0/A1 và nhiệm vụ kế tiếp có người nhận. Bàn giao khi mọi kết luận có bằng chứng test hoặc review, không dựa riêng vào lời tự báo của người tạo.
+**Đầu ra/bàn giao:** danh sách tệp và chức năng đã được kiểm, lỗi còn lại, kết quả từng cổng hiện hành và nhiệm vụ kế tiếp có người nhận. Bàn giao khi mọi kết luận có bằng chứng test hoặc review, không dựa riêng vào lời tự báo của người tạo.
 
 **P0/P1:** dừng quyết định nghiệm thu, giao người tạo sửa, yêu cầu QA chạy lại đúng lỗi và tình huống lân cận. Báo rõ tác động và trạng thái chưa giải quyết cho các vai trò liên quan.

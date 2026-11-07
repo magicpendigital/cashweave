@@ -24,7 +24,7 @@ test('compact records retain semantic heading labels and exact original detail l
  const rows=h.root.querySelectorAll('tr').filter(n=>hasClass(n,'mobile-record'));assert.ok(rows.length>=1);const row=rows.find(n=>n.textContent.includes('Synthetic mobile coffee'));assert.ok(row);assert.equal(row.children.length,6);assert.ok(row.children.every(n=>n.getAttribute('data-label')));const target=row.querySelector('a');assert.equal(target.getAttribute('href'),'#transactions/'+operation.id);await target.click();assert.equal(h.app.currentRoute(),'transactions/'+operation.id);h.app.close();
 });
 test('shared scope never uses iframe or mutates personal ledger; personal quick action is not shown there',async()=>{
- const h=await ready(),before=h.app.snapshot();await h.app.go('shared');assert.equal(h.root.querySelector('iframe'),null);assert.equal(h.get('quick-expense'),null);assert.ok(h.text().includes(t('sharedDemo')));const host=h.root.querySelector('section[class="shared-host"]');assert.ok(host);await h.app.go('overview');assert.deepEqual(h.app.snapshot(),before);await h.app.go('shared');assert.equal(h.root.querySelector('section[class="shared-host"]'),host);h.app.close();
+ const h=await ready(),before=h.app.snapshot();await h.app.go('shared');await h.app.sharedController().readyPromise;assert.equal(h.root.querySelector('iframe'),null);assert.equal(h.get('quick-expense'),null);assert.ok(h.text().includes(t('sharedOfflineBook')));const host=h.root.querySelector('[aria-label="Sổ chung offline trên thiết bị này"]');assert.ok(host);await h.app.go('overview');assert.deepEqual(h.app.snapshot(),before);await h.app.go('shared');assert.equal(h.root.querySelector('[aria-label="Sổ chung offline trên thiết bị này"]'),host);h.app.close();
 });
 test('native local backup cancel, oversize and malformed imports leave active data untouched',async()=>{
  let result=null;const h=await ready({appOptions:{onReadBackup:async()=>result}}),before=h.app.snapshot();await h.app.go('data');assert.equal(h.get('restore-form').querySelector('input[type="file"]'),null);await h.submit('restore-form',{});assert.deepEqual(h.app.snapshot(),before);
@@ -39,7 +39,7 @@ test('mobile style source specifies spacing, readable navigation, native safe ar
 });
 
 test('native picker completing after navigation is discarded rather than staging into the new context',async()=>{
- let finish;const h=await ready({appOptions:{onReadBackup:()=>new Promise(resolve=>{finish=resolve;})}}),text=await exportSnapshot(h.app.snapshot()),before=h.app.snapshot();await h.app.go('data');const pending=h.app.submit('restore-form',{});await h.app.go('help');await h.app.go('data');finish({text,size:Buffer.byteLength(text)});await pending;assert.deepEqual(h.app.snapshot(),before);assert.equal(h.get('activate-stage-form'),null);h.app.close();
+ let finish,opened;const pickerOpened=new Promise(resolve=>{opened=resolve;});const h=await ready({appOptions:{onReadBackup:()=>new Promise(resolve=>{finish=resolve;opened();})}}),text=await exportSnapshot(h.app.snapshot()),before=h.app.snapshot();await h.app.go('data');const pending=h.app.submit('restore-form',{});await pickerOpened;await h.app.go('help');await h.app.go('data');finish({text,size:Buffer.byteLength(text)});await pending;assert.deepEqual(h.app.snapshot(),before);assert.equal(h.get('activate-stage-form'),null);h.app.close();
 });
 
 test('native Back stays in the app while an atomic write is still pending',async()=>{

@@ -1,0 +1,32 @@
+name: Cash Weave manual offline QC
+
+# Deliberately no pull_request, push, schedule, deployment or store trigger.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-qc:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact manually selected revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Prepare pinned development dependencies without lifecycle scripts
+        shell: pwsh
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Run local synthetic QC without installing dependencies or SDKs
+        shell: pwsh
+        run: node scripts/qc.mjs --out evidence/qc-ci/manual.json
+      - name: Retain synthetic receipts and logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: synthetic-qc-${{ github.sha }}
+          path: evidence/qc-ci/
+          if-no-files-found: warn
+          retention-days: 14

@@ -2,4 +2,6 @@
 <resources>
     <string name="app_name">CashWeave Trial</string>
     <string name="package_name">app.cashweave.offline.trial</string>
+    <string name="startup_not_ready">Chưa mở được màn hình ứng dụng. Chưa xác nhận được trạng thái kho dữ liệu. Không xóa dữ liệu hoặc cài lại ứng dụng. Ứng dụng chưa xác nhận khởi động xong. Hãy giữ nguyên màn hình và báo hỗ trợ; có thể để ứng dụng ở nền.</string>
+    <string name="startup_background">Để ứng dụng ở nền</string>
 </resources>

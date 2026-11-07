@@ -1,4 +1,20 @@
-# CashWeave — bàn giao phát triển trên Máy Marketing
+# CashWeave — phát triển offline Android và iOS
+
+## Trạng thái source ngày 20/10/2026
+
+Đã triển khai khắc phục theo [phương án hiện hành](docs/remediation-plan-20261020.vi.md): undo/correction và liên kết kế hoạch/quỹ, profile validation, recovery sau restart/corrupt active, nhập legacy có preview, multipart backup, sửa số dư đầu kỳ có lịch sử và gia hạn/dừng recurrence. Mobile có sổ tương thích riêng để giữ nghiệp vụ thẻ/tài sản/CSV chưa ánh xạ sang v3. Không ép chuyển đổi hoặc gộp hai kho. Theo yêu cầu mới, [sổ chung offline trên một thiết bị](docs/shared-offline.vi.md) được bổ sung trước phát hành với kho/journal/backup riêng; ứng dụng không có dịch vụ cloud, đăng nhập hay đồng bộ nhiều máy. Nhãn hai người không phải xác thực danh tính.
+
+Android giữ `app.cashweave.offline.trial` và `https://localhost`. Đã bổ sung target Xcode/Swift và LocalBackup cho iOS, dùng chung domain/UI; mã native và test source không chứng minh build/runtime thiết bị. Owner có Android, chưa có Mac/Xcode. Chưa có candidate ký, cài điện thoại hoặc upload được nghiệm thu trong lượt này. Báo cáo cũ [audit](evidence/audit-20261020/REPORT.vi.md) là baseline trước sửa; kết quả khắc phục/QC mới được lưu riêng trong `evidence/remediation-20261020/`.
+
+Đọc [phạm vi và giới hạn dữ liệu](docs/development-plan.md), [workflow/agent](docs/agent-workflow.md), [QC](docs/test-plan.md), [QC thiết bị](docs/native-device-qa.vi.md) và [runbook phát hành](docs/release/RELEASE_RUNBOOK.md). `agents/*.md` là brief giao việc, không phải engine hoặc cơ chế cấp quyền. Bốn tài liệu thiếu đã được viết lại theo source hiện hành; không tự nhận là bản gốc trước chuyển máy.
+
+Node >=22. Sau khi dependency theo lockfile được chuẩn bị, chạy `node scripts/qc.mjs --out evidence/<ten-luot-moi>.json`. Lệnh chạy tuần tự Node suite, release fixtures, Python packager, Edge IndexedDB/UI và asset verification Android/iOS; không tải dependency, native build, ký, cài hay upload. Kết quả tổng giữ BLOCKED khi native/device/owner còn thiếu. Workflow CI mới chỉ chạy thủ công qua `workflow_dispatch`: runner chuẩn bị dependency khóa phiên bản bằng `npm ci --ignore-scripts` trước QC và giữ log giả lập; chưa được push/chạy remote. Việc chuẩn bị công cụ này không thêm network vào ứng dụng.
+
+Backup v3 vượt 5 MiB được chia phần; restore tối đa 64 MiB envelope và cần trọn bộ. Archive vượt trần hoặc snapshot invalid chỉ bảo toàn raw, chưa thể activate. Save sau `ADJUSTMENT` opening có thể không đọc được bằng binary v3 cũ; giữ backup/dataset trước nâng cấp và dùng recovery reader hiện tại. Không downgrade binary, clear data hoặc uninstall để né migration.
+
+Phần bên dưới là lịch sử checkpoint bàn giao ngày 14/10, không phải kết quả QC hoặc inventory hiện hành.
+
+# Lịch sử bàn giao phát triển trên Máy Marketing
 
 Checkpoint source-only đã được bàn giao ngày14/10/2026 vào repository private magicpendigital/cashweave, nhánh handoff/marketing-20261014. Commit source: bd8a23e21b50ee63383a2fb2efdfc222932afe5e. 113/113 tệp remote đã được đọc lại và khớp SHA256 với candidate V2 được duyệt. Đây không phải APK/release đã đạt native QA. App tiếp tục offline; không thêm cloud/live transmission.
 

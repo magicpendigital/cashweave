@@ -44,6 +44,16 @@ public class LocalBackupPlugin extends Plugin {
     private volatile boolean destroyed;
     private volatile boolean restoredInterruption;
 
+    @Override
+    public Boolean shouldOverrideLoad(Uri url) {
+        // Capacitor otherwise hands external links to ACTION_VIEW, bypassing
+        // the WebView's no-network CSP and this app's removed INTERNET grant.
+        if (url == null || !"https".equals(url.getScheme()) || !"localhost".equals(url.getHost()) ||
+            url.getUserInfo() != null || (url.getPort() != -1 && url.getPort() != 443)) return true;
+        String path = url.getPath();
+        return path != null && path.startsWith("/_capacitor_http_interceptor_");
+    }
+
     private static Thread daemon(Runnable runnable, String name) {
         Thread thread = new Thread(runnable, name);
         thread.setDaemon(true);
@@ -128,6 +138,17 @@ public class LocalBackupPlugin extends Plugin {
 
     @PluginMethod
     public void saveJson(PluginCall call) {
+        saveDocument(call, false);
+    }
+
+    @PluginMethod
+    public void saveText(PluginCall call) {
+        if (!"text/csv".equals(call.getString("mimeType"))) { call.reject("BACKUP_TYPE_INVALID"); return; }
+        call.getData().remove("mimeType");
+        saveDocument(call, true);
+    }
+
+    private void saveDocument(PluginCall call, boolean csv) {
         String text = call.getString("text");
         // getData returns the original mutable options. Bridge.saveInstanceState
         // serializes it separately, so remove BEFORE saving/launching the call.
@@ -136,14 +157,14 @@ public class LocalBackupPlugin extends Plugin {
         if (text == null || text.isEmpty()) { call.reject("BACKUP_EMPTY"); return; }
         byte[] payload = text.getBytes(StandardCharsets.UTF_8);
         if (payload.length > MAX_BYTES) { call.reject("BACKUP_TOO_LARGE"); return; }
-        if (!filename.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,119}\\.json")) { call.reject("BACKUP_FILENAME_INVALID"); return; }
+        if (!filename.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,119}\\." + (csv ? "csv" : "json"))) { call.reject("BACKUP_FILENAME_INVALID"); return; }
         // The bounded display name need not be in saved options either.
         call.getData().remove("filename");
         Operation operation = acquire(call, payload);
         if (operation == null) return;
         Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("application/json");
+        intent.setType(csv ? "text/csv" : "application/json");
         intent.putExtra(Intent.EXTRA_TITLE, filename);
         intent.putExtra(Intent.EXTRA_LOCAL_ONLY, true);
         launch(operation, intent, "saveResult");
@@ -213,7 +234,7 @@ public class LocalBackupPlugin extends Plugin {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("*/*");
-        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[] { "application/json", "text/plain", "application/octet-stream" });
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[] { "application/json", "text/csv", "text/plain", "application/octet-stream" });
         intent.putExtra(Intent.EXTRA_LOCAL_ONLY, true);
         launch(operation, intent, "openResult");
     }

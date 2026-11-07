@@ -1,7 +1,7 @@
 import { clone, digest, id } from './identity.js';
 import { money, minor, positive, checked } from './money.js';
 import { requireDate, requireTimezone, todayInTimezone, monthlyDate } from './calendar.js';
-import { record, entity, validateSnapshot, sourceCapacity, poolSummary, envelopeBalance } from './model.js';
+import { record, entity, validateSnapshot, sourceCapacity, poolSummary, envelopeBalance, planSummary, requireLocale, openingBalanceSummary } from './model.js';
 import { previewAllocationV3, calculateAllocation } from './allocation.js';
 
 const name = value => { if (typeof value !== 'string' || !value.trim() || value.length > 500) throw new Error('INVALID_NAME'); return value.trim(); };
@@ -9,7 +9,7 @@ function writableAccount(state, accountId) { const account = entity(state, 'acco
 function appendOperation(state, input, commandId, now) {
   const date = requireDate(input.effectiveLocalDate);
   if (date > todayInTimezone(state.profile.timezoneId, new Date(now))) throw new Error('ACTUAL_DATE_IN_FUTURE');
-  const operation = record(state, { operationType: input.operationType, commandId, effectiveLocalDate: date, memo: String(input.memo || '').slice(0, 2000), committedAtUtc: now, ...(input.reversalOfOperationId ? { reversalOfOperationId: input.reversalOfOperationId } : {}), ...(input.replacementForOperationId ? { replacementForOperationId: input.replacementForOperationId } : {}), reason: String(input.reason || '').slice(0, 500) }, now);
+  const operation = record(state, { operationType: input.operationType, commandId, effectiveLocalDate: date, memo: String(input.memo || '').slice(0, 2000), committedAtUtc: now, ...(input.reversalOfOperationId ? { reversalOfOperationId: input.reversalOfOperationId } : {}), ...(input.replacementForOperationId ? { replacementForOperationId: input.replacementForOperationId } : {}), ...(input.adjustmentForOperationId ? { adjustmentForOperationId: input.adjustmentForOperationId } : {}), reason: String(input.reason || '').slice(0, 500) }, now);
   const legs = input.legs.map((leg, stableOrder) => {
     const account = writableAccount(state, leg.accountId); money(account.currencyCode, leg.signedAmountMinor);
     return record(state, { ...leg, operationId: operation.id, currencyCode: account.currencyCode, effectiveLocalDate: date, stableOrder }, now);
@@ -17,7 +17,7 @@ function appendOperation(state, input, commandId, now) {
   state.operations.push(operation); state.postings.push(...legs);
   for (const posting of legs) {
     const account = entity(state, 'accounts', posting.accountId);
-    if (['INCOME','OPENING'].includes(posting.reportingOrigin) && !posting.reversesPostingId && minor(posting.signedAmountMinor) > 0n && account.includeInBudget) state.fundingSources.push(record(state, { budgetPoolId: account.budgetPoolId, sourcePostingId: posting.id, currencyCode: posting.currencyCode, eligibleAmountMinor: posting.signedAmountMinor }, now));
+    if ((['INCOME','OPENING'].includes(posting.reportingOrigin) || posting.reportingOrigin === 'ADJUSTMENT' && operation.adjustmentForOperationId) && !posting.reversesPostingId && minor(posting.signedAmountMinor) > 0n && account.includeInBudget) state.fundingSources.push(record(state, { budgetPoolId: account.budgetPoolId, sourcePostingId: posting.id, currencyCode: posting.currencyCode, eligibleAmountMinor: posting.signedAmountMinor }, now));
   }
   return { operation, legs };
 }
@@ -49,13 +49,50 @@ function reverseLink(state, collection, linkId, commandId, effectiveLocalDate, n
 function reverseOperation(state, operationId, input, commandId, now) {
   const original = entity(state, 'operations', operationId);
   if (original.operationType === 'REVERSAL' || state.operations.some(o => o.reversalOfOperationId === original.id)) throw new Error('OPERATION_ALREADY_REVERSED');
+  if (original.operationType === 'OPENING' && state.operations.some(operation => operation.adjustmentForOperationId === original.id && !state.operations.some(reversal => reversal.reversalOfOperationId === operation.id))) throw new Error('UNDO_OPENING_CORRECTIONS_FIRST');
+  requireDate(input.effectiveLocalDate);
+  if (input.effectiveLocalDate < original.effectiveLocalDate) throw new Error('REVERSAL_BEFORE_OPERATION');
   const originals = state.postings.filter(p => p.operationId === original.id);
   for (const posting of originals) for (const source of state.fundingSources.filter(s => s.sourcePostingId === posting.id)) if (minor(sourceCapacity(state, source.id).consumed) > 0n) throw new Error('UNDO_ALLOCATIONS_FIRST');
+  if (original.adjustmentForOperationId) {
+    const posting = originals[0], account = entity(state, 'accounts', posting.accountId);
+    if (minor(posting.signedAmountMinor) > 0n && account.includeInBudget && minor(poolSummary(state, account.budgetPoolId).unassigned) - minor(posting.signedAmountMinor) < 0n) throw new Error('OPENING_CORRECTION_BUDGET_DEFICIT');
+  }
   for (const posting of originals) {
     for (const link of state.settlements.filter(l => l.ledgerPostingId === posting.id && !l.reversalOfLinkId && !state.settlements.some(r => r.reversalOfLinkId === l.id))) reverseLink(state, 'settlements', link.id, commandId, input.effectiveLocalDate, now);
     for (const link of state.spendLinks.filter(l => l.expensePostingId === posting.id && !l.reversalOfLinkId && !state.spendLinks.some(r => r.reversalOfLinkId === l.id))) reverseLink(state, 'spendLinks', link.id, commandId, input.effectiveLocalDate, now);
   }
   return appendOperation(state, { operationType: 'REVERSAL', reversalOfOperationId: original.id, reason: input.reason, effectiveLocalDate: input.effectiveLocalDate, legs: originals.map(p => ({ accountId: p.accountId, signedAmountMinor: checked(-minor(p.signedAmountMinor)), reportingOrigin: p.reportingOrigin, ...(p.categoryId ? { categoryId: p.categoryId } : {}), reversesPostingId: p.id })) }, commandId, now).operation.id;
+}
+function livePostingLinks(state, collection, field, postingId) {
+  const reversed = new Set(state[collection].filter(link => link.reversalOfLinkId).map(link => link.reversalOfLinkId));
+  return state[collection].filter(link => link[field] === postingId && !link.reversalOfLinkId && !reversed.has(link.id));
+}
+function correctionLinks(state, originalPosting, input, amount) {
+  const requested = input.linkReconciliation;
+  if (requested !== undefined && (!requested || typeof requested !== 'object' || Array.isArray(requested) || Object.keys(requested).some(key => !['settlements','spendLinks'].includes(key)))) throw new Error('INVALID_CORRECTION_RECONCILIATION');
+  return Object.fromEntries([['settlements','ledgerPostingId'],['spendLinks','expensePostingId']].map(([collection, field]) => {
+    const live = livePostingLinks(state, collection, field, originalPosting.id);
+    const choices = requested?.[collection];
+    if (choices !== undefined && (!Array.isArray(choices) || choices.length !== live.length || new Set(choices.map(choice => choice?.linkId)).size !== live.length)) throw new Error('INVALID_CORRECTION_RECONCILIATION');
+    const links = live.map(link => {
+      const choice = choices === undefined ? { amountMinor: link.signedAmountMinor } : choices.find(item => item?.linkId === link.id);
+      if (!choice || minor(choice.amountMinor) < 0n) throw new Error('INVALID_CORRECTION_RECONCILIATION');
+      return { link, amountMinor: choice.amountMinor };
+    });
+    if (links.reduce((total, choice) => total + minor(choice.amountMinor), 0n) > amount) throw new Error('CORRECTION_LINK_RECONCILIATION_REQUIRED');
+    return [collection, links];
+  }));
+}
+function appendCorrectedLinks(state, choices, posting, effectiveLocalDate, commandId, now) {
+  const ids = [];
+  for (const [collection, links] of Object.entries(choices)) for (const { link, amountMinor } of links) {
+    if (amountMinor === '0') continue; // Explicitly dropping an association is recorded in the command receipt and reversal history.
+    const field = collection === 'settlements' ? 'ledgerPostingId' : 'expensePostingId';
+    const replacement = record(state, { ...link, [field]: posting.id, signedAmountMinor: amountMinor, effectiveLocalDate: link.effectiveLocalDate > effectiveLocalDate ? link.effectiveLocalDate : effectiveLocalDate, createdByCommandId: commandId, correctionOfLinkId: link.id }, now);
+    state[collection].push(replacement); ids.push(replacement.id);
+  }
+  return ids;
 }
 function appendOccurrence(state, input, now) {
   positive(input.expectedAmountMinor); money(input.currencyCode, input.expectedAmountMinor); requireDate(input.dueLocalDate);
@@ -85,6 +122,7 @@ function saveTemplate(state, input, now) {
   let template = input.templateId ? entity(state, 'templates', input.templateId) : null;
   if (template?.archivedAtUtc) throw new Error('TEMPLATE_ARCHIVED');
   if (!template) { template = record(state, { name: name(input.name), archivedAtUtc: null, currentVersionId: '' }, now); state.templates.push(template); }
+  else template.name = name(input.name);
   const lines = input.lines.map(line => ({ ...clone(line), stableLineKey: line.stableLineKey || id() }));
   for (const line of lines) { const envelope=entity(state,'envelopes',line.envelopeId); if(envelope.archivedAtUtc)throw new Error('ENVELOPE_ARCHIVED');if(envelope.currencyCode!==input.currencyCode)throw new Error('TEMPLATE_CURRENCY_MISMATCH'); }
   calculateAllocation('1', lines, input);
@@ -116,6 +154,8 @@ function commitAllocation(state, preview, input, commandId, now) {
 }
 
 export async function prepareCommand(snapshot, command, expectedRevision, { now = new Date().toISOString() } = {}) {
+  // Capture caller-owned input before asynchronous hashing or calculation.
+  command=clone(command);snapshot=clone(snapshot);
   validateSnapshot(snapshot);
   if (!command?.commandId || typeof command.commandId !== 'string' || !command.type || !command.input) throw new Error('INVALID_COMMAND');
   const payloadHash = await digest(command), old = snapshot.receipts.find(r => r.commandId === command.commandId);
@@ -127,11 +167,22 @@ export async function prepareCommand(snapshot, command, expectedRevision, { now 
     case 'onboard':
       if (state.profile.onboardingCompletedAtUtc || state.accounts.length) throw new Error('ALREADY_ONBOARDED');
       money(input.currencyCode,'0');
-      if (input.locale) { new Intl.NumberFormat(input.locale).format(0); state.profile.locale = input.locale; }
-      if (input.timezoneId) state.profile.timezoneId = requireTimezone(input.timezoneId);
+      if (input.locale !== undefined) state.profile.locale = requireLocale(input.locale);
+      if (input.timezoneId !== undefined) state.profile.timezoneId = requireTimezone(input.timezoneId);
       state.profile.defaultCurrencyCode = input.currencyCode;
       resultIds = createAccount(state, input, commandId, now); state.profile.onboardingCompletedAtUtc = now; state.profile.updatedAtUtc = now; state.profile.revision = state.revision + 1; break;
     case 'addAccount': resultIds = createAccount(state, input, commandId, now); break;
+    case 'correctOpeningBalance': {
+      if (typeof input.reason !== 'string' || !input.reason.trim()) throw new Error('CORRECTION_REASON_REQUIRED');
+      const account = writableAccount(state, input.accountId), opening = openingBalanceSummary(state, account.id);
+      money(account.currencyCode, input.openingAmountMinor); requireDate(input.effectiveLocalDate);
+      if (input.effectiveLocalDate < opening.lastEffectiveLocalDate) throw new Error('OPENING_CORRECTION_BEFORE_HISTORY');
+      const difference = minor(input.openingAmountMinor) - minor(opening.correctedOpeningAmountMinor);
+      if (difference === 0n) throw new Error('OPENING_BALANCE_UNCHANGED');
+      if (difference < 0n && account.includeInBudget && minor(poolSummary(state, account.budgetPoolId).unassigned) + difference < 0n) throw new Error('OPENING_CORRECTION_BUDGET_DEFICIT');
+      const adjustment = appendOperation(state, { operationType: 'ADJUSTMENT', adjustmentForOperationId: opening.openingOperationId, effectiveLocalDate: input.effectiveLocalDate, memo: input.memo || '', reason: input.reason, legs: [{ accountId: account.id, signedAmountMinor: checked(difference), reportingOrigin: 'ADJUSTMENT' }] }, commandId, now);
+      resultIds = [adjustment.operation.id, adjustment.legs[0].id]; break;
+    }
     case 'updateAccount':
     case 'updateCategory':
     case 'updateEnvelope': {
@@ -159,12 +210,17 @@ export async function prepareCommand(snapshot, command, expectedRevision, { now 
     }
     case 'reverseOperation': resultIds = [reverseOperation(state, input.operationId, input, commandId, now)]; break;
     case 'replaceOperation': {
-      if (!input.reason?.trim()) throw new Error('CORRECTION_REASON_REQUIRED');
+      if (typeof input.reason !== 'string' || !input.reason.trim()) throw new Error('CORRECTION_REASON_REQUIRED');
       const original = entity(state, 'operations', input.operationId);
       if (!['INCOME','EXPENSE'].includes(original.operationType)) throw new Error('REPLACEMENT_TYPE_NOT_SUPPORTED');
+      if (input.memo !== undefined && typeof input.memo !== 'string') throw new Error('INVALID_MEMO');
+      const posting = state.postings.find(p => p.operationId === original.id), amount = positive(input.amountMinor);
+      const accountId = input.accountId || posting.accountId;
+      if (writableAccount(state, accountId).currencyCode !== posting.currencyCode) throw new Error('CORRECTION_CURRENCY_MISMATCH');
+      const choices = correctionLinks(state, posting, input, amount);
       resultIds = [reverseOperation(state, original.id, input, commandId, now)];
-      const posting = state.postings.find(p => p.operationId === original.id); const amount = positive(input.amountMinor);
-      resultIds.push(appendOperation(state, { operationType: original.operationType, effectiveLocalDate: input.effectiveLocalDate, replacementForOperationId: original.id, memo: input.memo, reason: input.reason, legs: [{ accountId: input.accountId || posting.accountId, signedAmountMinor: checked(original.operationType === 'INCOME' ? amount : -amount), reportingOrigin: posting.reportingOrigin, ...(posting.categoryId ? { categoryId: posting.categoryId } : {}) }] }, commandId, now).operation.id); break;
+      const replacement = appendOperation(state, { operationType: original.operationType, effectiveLocalDate: input.effectiveLocalDate, replacementForOperationId: original.id, memo: input.memo === undefined ? original.memo : input.memo, reason: input.reason, legs: [{ accountId, signedAmountMinor: checked(original.operationType === 'INCOME' ? amount : -amount), reportingOrigin: posting.reportingOrigin, ...(posting.categoryId ? { categoryId: posting.categoryId } : {}) }] }, commandId, now);
+      resultIds.push(replacement.operation.id, ...appendCorrectedLinks(state, choices, replacement.legs[0], input.effectiveLocalDate, commandId, now)); break;
     }
     case 'createPlan': resultIds = [appendOccurrence(state, { title: input.title, direction: input.direction, currencyCode: input.currencyCode, dueLocalDate: input.dueLocalDate, expectedAmountMinor: input.expectedAmountMinor, expectedAccountId: input.expectedAccountId || '' }, now)]; break;
     case 'createMonthlyPlan': {
@@ -175,16 +231,21 @@ export async function prepareCommand(snapshot, command, expectedRevision, { now 
       resultIds = [series.id, ...generateOccurrences(state, series.id, input.monthKeys || [input.anchorLocalDate.slice(0,7)], now)]; break;
     }
     case 'generateOccurrences': resultIds = generateOccurrences(state, input.seriesId, input.monthKeys, now); break;
+    case 'setSeriesUntilDate': {
+      const series = entity(state,'planSeries',input.seriesId);
+      if(input.untilDate!==null){requireDate(input.untilDate);if(input.untilDate<series.activeFromDate)throw new Error('SERIES_END_BEFORE_START');}
+      series.untilDate=input.untilDate;series.updatedAtUtc=now;series.revision=state.revision+1;resultIds=[series.id];break;
+    }
     case 'revisePlan': {
       const occurrence = entity(state,'occurrences',input.occurrenceId); positive(input.expectedAmountMinor);
-      if (occurrence.closure !== 'OPEN' || state.settlements.some(l => l.planOccurrenceId === occurrence.id && !l.reversalOfLinkId)) throw new Error('SETTLED_PLAN_REVISION_BLOCKED');
+      if (occurrence.closure !== 'OPEN' || minor(planSummary(state, occurrence.id).netSettled) !== 0n) throw new Error('SETTLED_PLAN_REVISION_BLOCKED');
       const exception = record(state,{occurrenceId:occurrence.id,seriesId:occurrence.seriesId || null,occurrenceKey:occurrence.occurrenceKey || occurrence.id,kind:'OVERRIDE',previousAmountMinor:occurrence.expectedAmountMinor,amountMinor:input.expectedAmountMinor},now);
       state.planExceptions.push(exception); occurrence.expectedAmountMinor = input.expectedAmountMinor; occurrence.updatedAtUtc = now; occurrence.revision = state.revision + 1; resultIds = [exception.id,occurrence.id]; break;
     }
     case 'revisePlanSeries': {
       const series = entity(state,'planSeries',input.seriesId); positive(input.amountMinor); monthlyDate(input.validFromOccurrenceKey,series.monthDay);
       const revision = record(state,{seriesId:series.id,validFromOccurrenceKey:input.validFromOccurrenceKey,amountMinor:input.amountMinor},now); state.planRevisions.push(revision);
-      for (const occurrence of state.occurrences.filter(o => o.seriesId === series.id && o.occurrenceKey >= input.validFromOccurrenceKey && o.closure === 'OPEN' && !state.settlements.some(l => l.planOccurrenceId === o.id))) { occurrence.expectedAmountMinor = input.amountMinor; occurrence.revisionSnapshotId = revision.id; occurrence.updatedAtUtc = now; occurrence.revision = state.revision + 1; }
+      for (const occurrence of state.occurrences.filter(o => o.seriesId === series.id && o.occurrenceKey >= input.validFromOccurrenceKey && o.closure === 'OPEN' && minor(planSummary(state, o.id).netSettled) === 0n)) { occurrence.expectedAmountMinor = input.amountMinor; occurrence.revisionSnapshotId = revision.id; occurrence.updatedAtUtc = now; occurrence.revision = state.revision + 1; }
       resultIds = [revision.id]; break;
     }
     case 'reschedulePlan': { const occurrence = entity(state, 'occurrences', input.occurrenceId); if (occurrence.closure !== 'OPEN') throw new Error('PLAN_CLOSED'); requireDate(input.dueLocalDate); state.planExceptions.push(record(state, { occurrenceId: occurrence.id, seriesId: occurrence.seriesId || null, occurrenceKey: occurrence.occurrenceKey || occurrence.id, kind: 'RESCHEDULE', dueLocalDate: input.dueLocalDate }, now)); occurrence.dueLocalDate = input.dueLocalDate; occurrence.updatedAtUtc = now; occurrence.revision = state.revision + 1; resultIds = [occurrence.id]; break; }

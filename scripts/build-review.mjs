@@ -8,7 +8,7 @@ import { sharedScriptHash } from '../shared-csp.js';
 import { reviewOutputDirectory } from './review-output.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const names = ['ledger.js', 'sample.js', 'budgeting.js', 'state-schema.js', 'storage.js', 'shared-embed.js', 'app.js'];
+const names = ['ledger.js', 'sample.js', 'budgeting.js', 'state-schema.js', 'storage.js', 'compatibility.js', 'legacy-platform.js', 'shared-embed.js', 'app.js'];
 const modules = [];
 for (const name of names) {
   let code = await readFile(resolve(root, name), 'utf8');

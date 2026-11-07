@@ -142,8 +142,12 @@ export function validateRelease(root, manifestBytes, approvalBytes) {
   }
   fileRecord(manifest.ownerPacket,'owner-packet');
   let approval;
-  try {approval = JSON.parse(approvalBytes);} catch {add('approval','BLOCKED','EXACT_OWNER_APPROVAL_REQUIRED');}
-  if (approval) {
+  try {
+    const parsed = JSON.parse(approvalBytes);
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed) || Object.getPrototypeOf(parsed) !== Object.prototype) add('approval','BLOCKED','EXACT_OWNER_APPROVAL_REQUIRED');
+    else approval = parsed;
+  } catch {add('approval','BLOCKED','EXACT_OWNER_APPROVAL_REQUIRED');}
+  if (approval !== undefined) {
     const approvedAt=Date.parse(approval.approvedAt ?? '');
     const expiresAt=Date.parse(approval.expiresAt ?? '');
     const now=Date.now();

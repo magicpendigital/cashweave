@@ -5,11 +5,19 @@
   "loggingBehavior": "none",
   "server": {
     "hostname": "localhost",
-    "androidScheme": "https"
+    "androidScheme": "https",
+    "iosScheme": "capacitor"
   },
   "android": {
     "allowMixedContent": false,
     "webContentsDebuggingEnabled": false,
+    "backgroundColor": "#f5f8f3"
+  },
+  "ios": {
+    "scheme": "App",
+    "limitsNavigationsToAppBoundDomains": true,
+    "webContentsDebuggingEnabled": false,
+    "allowLinkPreview": false,
     "backgroundColor": "#f5f8f3"
   },
   "plugins": {

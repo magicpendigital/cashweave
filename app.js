@@ -1,8 +1,10 @@
 import { sharedDocument } from './shared-embed.js';
 import { calculateBalances, calculateDashboard, validateTransaction, createTransaction, updateAssetValue, importTransactionsCsv, localDate, isValidDate } from './ledger.js';
-import { loadState, saveState, resetState, commitChange, undoChange, exportBackup, parseBackup, backupSummary, exportTransactionsCsv } from './storage.js';
+import { loadState, saveState, resetState, commitChange, undoChange, exportBackup, backupSummary, exportTransactionsCsv } from './storage.js';
 import { getTemplates, previewAllocation, saveBudgetTemplate, getBudgetSummary, applyIncomeAllocation, createIncomeWithAllocation, linkBudgetExpense } from './budgeting.js';
 import { createDemoState } from './sample.js';
+import { createEmptyCompatibilityBook, inspectCompatibilityBook, addCompatibilityAsset, correctCompatibilityTransaction } from './compatibility.js';
+import { currentLegacyServices, onLegacyServicesChanged } from './legacy-platform.js';
 
 const today = () => localDate();
 const money = value => `${new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(Number(value) || 0)} ₫`;
@@ -56,7 +58,8 @@ const planRemaining = p => Math.max(0, Number(p.amount || 0) - Number(p.settledA
 const storageKey = 'financial-assistant-prototype-v1';
 let state;
 let storageError = null;
-try { state = loadState() || createDemoState(); }
+let initialBookWasAbsent = false;
+try { initialBookWasAbsent = globalThis.localStorage?.getItem(storageKey) === null; state = loadState() || createDemoState(); if (initialBookWasAbsent && globalThis.location?.pathname?.endsWith('/legacy.html')) state = createEmptyCompatibilityBook(); if (state.transactionCorrections !== undefined) state = inspectCompatibilityBook(JSON.stringify(state)).state; }
 catch (error) { console.error(error); storageError = error.message || 'Không đọc được dữ liệu cục bộ.'; state = createDemoState(); }
 let view = 'dashboard';
 let txFilter = 'all';
@@ -80,9 +83,23 @@ async function persistAndRender(next, label = 'Cập nhật sổ') {
   writeBusy = true;
   try { await saveState(candidate); state = candidate; render(); } finally { writeBusy = false; }
 }
-function setView(next) { view = next; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+function setView(next) { if (next === 'shared' && currentLegacyServices()?.native) { toast('Sổ chung mô phỏng chưa được hỗ trợ trong ứng dụng điện thoại.', 'error'); return; } view = next; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+export function handleLegacyBack() {
+  if (writeBusy) return true;
+  if (document.getElementById('modal-root')?.innerHTML) { closeModal(); return true; }
+  if (view !== 'dashboard') { setView('dashboard'); return true; }
+  return false;
+}
 function mountIcons(scope = document) { scope.querySelectorAll('[data-icon]').forEach(el => { el.innerHTML = icon(el.dataset.icon); }); }
 function render() {
+  const native = currentLegacyServices()?.native === true;
+  const currentBookLink = document.getElementById('current-book-link'); if (currentBookLink) currentBookLink.hidden = native;
+  document.querySelectorAll('[data-view="shared"]').forEach(button => { button.hidden = native; button.disabled = native; });
+  if (native && view === 'shared') view = 'dashboard';
+  if (native) {
+    document.querySelector('.scope-note').textContent = 'Sổ tương thích offline · Tài khoản, thẻ, tài sản và CSV được giữ trong sổ riêng. Không gộp hoặc đồng bộ với sổ mới.';
+    document.querySelectorAll('[data-action="reset-demo"]').forEach(button => { button.hidden = true; });
+  }
   const shared = view === 'shared';
   const fileNotice = document.getElementById('file-origin-notice');
   if (fileNotice) fileNotice.hidden = globalThis.location?.protocol !== 'file:';
@@ -123,6 +140,7 @@ function render() {
   document.querySelectorAll('[data-view]').forEach(button => button.classList.toggle('active', button.dataset.view === view));
   const html = { dashboard: renderDashboard, transactions: renderTransactions, assets: renderAssets, calendar: renderCalendar, guide: renderGuide, allocations: renderAllocations, data: renderData }[view](dash);
   document.getElementById('view').innerHTML = `${!globalThis.navigator?.locks?.request ? '<div class="notice warn">Chế độ chỉ đọc: trình duyệt này chưa có Web Locks để ghi an toàn. Vẫn có thể xem và xuất JSON/CSV; mở bằng trình duyệt hỗ trợ trên localhost để ghi.</div>' : ''}${html}`;
+  if (native) document.querySelectorAll('[data-action="reset-demo"]').forEach(button => { button.hidden = true; });
   mountIcons();
 }
 
@@ -189,7 +207,7 @@ function filteredTransactions() {
 }
 function transactionRows() {
   const rows = filteredTransactions();
-  return rows.length ? rows.map(t => `<tr><td><strong>${dateText(t.date)}</strong></td><td><span class="pill ${safe(t.kind)}">${safe(kindLabels[t.kind] || t.kind)}</span></td><td><strong>${safe(txTitle(t))}</strong><small>${safe(t.category || '')}</small></td><td>${safe(txDestination(t))}</td><td class="${t.kind === 'income' ? 'money-income' : t.kind === 'expense' ? 'money-expense' : 'money-neutral'}">${t.kind === 'income' ? '+' : t.kind === 'expense' ? '−' : ''}${money(t.amount)}</td></tr>`).join('') : `<tr><td colspan="5"><div class="empty-state">${icon('search')}<strong>Không thấy giao dịch phù hợp</strong><p>Thử bộ lọc khác hoặc thêm một giao dịch.</p></div></td></tr>`;
+  return rows.length ? rows.map(t => `<tr><td><strong>${dateText(t.date)}</strong></td><td><span class="pill ${safe(t.kind)}">${safe(kindLabels[t.kind] || t.kind)}</span></td><td><strong>${safe(txTitle(t))}</strong><small>${safe(t.category || '')}</small><button type="button" class="button button-small" data-action="correct-transaction" data-id="${safe(t.id)}">Sửa có lịch sử</button></td><td>${safe(txDestination(t))}</td><td class="${t.kind === 'income' ? 'money-income' : t.kind === 'expense' ? 'money-expense' : 'money-neutral'}">${t.kind === 'income' ? '+' : t.kind === 'expense' ? '−' : ''}${money(t.amount)}</td></tr>`).join('') : `<tr><td colspan="5"><div class="empty-state">${icon('search')}<strong>Không thấy giao dịch phù hợp</strong><p>Thử bộ lọc khác hoặc thêm một giao dịch.</p></div></td></tr>`;
 }
 function renderTransactions(dash) {
   return `${intro('Mọi chuyển động đều có dấu vết.', 'Thu chi, chuyển tiền và mua tài sản được ghi riêng để báo cáo không đếm hai lần.', `<button type="button" class="button" data-action="import-csv">${icon('upload')} Nhập CSV</button><button type="button" class="button button-primary" data-action="add-transaction">${icon('plus')} Thêm giao dịch</button>`)}
@@ -214,7 +232,7 @@ function renderAssets(dash) {
     allocCursor += width;
     return rect;
   }).join('');
-  return `${intro('Tài sản của bạn, nhìn rõ hơn.', 'Giá trị cập nhật thủ công. Mỗi khoản có ngày định giá để bạn biết số nào cần kiểm tra lại.')}
+  return `${intro('Tài sản của bạn, nhìn rõ hơn.', 'Giá trị cập nhật thủ công. Mỗi khoản có ngày định giá để bạn biết số nào cần kiểm tra lại.', '<button type="button" class="button button-primary" data-action="add-asset">Thêm tài sản</button>')}
   <div class="summary-strip"><div class="summary-item"><span>Tổng tài sản</span><strong>${money(b.totalAssets)}</strong></div><div class="summary-item"><span>Dư nợ thẻ</span><strong class="delta-down">${money(b.creditDebt)}</strong></div><div class="summary-item"><span>Tài sản ròng</span><strong class="delta-up">${money(b.netWorth)}</strong></div></div>
   <div class="asset-layout"><div><div class="section-heading"><div><h3>Danh mục đang theo dõi</h3><p>${state.assets.length} tài sản · giá trị do bạn nhập</p></div></div><div class="asset-cards">${values.map(({ asset:a, value, cost }) => { const delta = value - cost; return `<article class="asset-card"><div class="asset-card-main"><span class="asset-card-icon">${icon('layers')}</span><div class="asset-card-name"><strong>${safe(a.name)}</strong><span>${safe(assetType(a.type))} · cập nhật ${dateText(a.asOf)}</span></div><div class="asset-card-price">${money(value)}</div></div><div class="asset-card-bottom"><div class="metadata">Vốn ghi nhận: ${money(cost)}<br/>Chênh lệch: <strong class="${delta >= 0 ? 'delta-up' : 'delta-down'}">${delta >= 0 ? '+' : ''}${money(delta)}</strong></div><button type="button" class="button button-small" data-action="update-asset" data-id="${safe(a.id)}">${icon('edit')} Cập nhật giá</button></div></article>`; }).join('') || `<div class="card empty-state">Chưa có tài sản được theo dõi.</div>`}</div></div>
   <div class="stack"><section class="card"><div class="card-heading"><div><h3>Phân bổ tài sản</h3><p>Tính trên tiền hiện có và giá trị tài sản.</p></div></div><div class="allocation-total"><strong>${money(allocTotal)}</strong><small>Giá trị dùng để phân bổ</small></div><svg class="allocation-track" viewBox="0 0 100 9" preserveAspectRatio="none" role="img" aria-label="Phân bổ tài sản">${allocationRects}</svg><div class="allocation-legend">${activeAlloc.map((a, i) => `<div class="allocation-line"><span class="allocation-swatch swatch-${i % colors.length}"></span><span>${safe(a.label)}</span><strong>${allocTotal ? Math.round(100*a.value/allocTotal) : 0}%</strong></div>`).join('') || `<div class="empty-state">Chưa có giá trị để phân bổ.</div>`}</div></section><div class="notice info">${icon('info')} Chênh lệch so với vốn ghi nhận chưa phải lợi nhuận thực nhận. Giá trị bất động sản, vàng và quỹ cần bạn cập nhật định kỳ.</div></div></div>`;
@@ -229,9 +247,9 @@ function renderCalendar(dash) {
 }
 
 function renderGuide() {
-  return `${intro('Bắt đầu từ dữ liệu mẫu.', 'Thử quy trình ghi chép và kiểm tra mà không cần liên kết ngân hàng hay tải dữ liệu cá nhân lên máy chủ.')}
+  return `${intro(currentLegacyServices()?.native ? 'Sổ tương thích offline, dữ liệu riêng.' : 'Bắt đầu từ dữ liệu mẫu.', 'Ghi chép và kiểm tra mà không cần liên kết ngân hàng hay tải dữ liệu cá nhân lên máy chủ.')}
   <div class="guide-grid"><div class="guide-step"><span class="step-number">01</span><h3>Xem bức tranh hiện tại</h3><p>Tổng quan đặt tiền, khoản sắp đến hạn và giá trị tài sản vào cùng một nơi.</p></div><div class="guide-step"><span class="step-number">02</span><h3>Ghi một chuyển động</h3><p>Thêm thu, chi, chuyển khoản hoặc mua tài sản. Trả thẻ bằng loại “Chuyển tiền”.</p></div><div class="guide-step"><span class="step-number">03</span><h3>Kiểm tra tháng tới</h3><p>Thêm khoản dự kiến, cập nhật giá tài sản rồi xem số dư ước tính sau 30 ngày.</p></div></div>
-  <div class="guide-lower"><section class="card"><div class="card-heading"><div><h3>Quy tắc tính quan trọng</h3><p>Giúp báo cáo thu chi sát thực tế hơn.</p></div></div><ul class="guide-list"><li>Mua hàng bằng thẻ là chi tiêu. Chuyển tiền trả thẻ chỉ thay đổi tài khoản và dư nợ, không phát sinh chi tiêu lần nữa.</li><li>Chuyển tiền giữa các tài khoản của bạn không phải thu nhập hay chi tiêu.</li><li>Mua tài sản làm giảm tiền sẵn có và tăng vốn đầu tư; giá trị tài sản được cập nhật riêng.</li><li>Khoản trả thẻ đã thanh toán cần gắn với khoản trong lịch để dự báo không trừ lần nữa.</li></ul><div class="guide-actions"><button type="button" class="button button-primary" data-action="add-transaction">${icon('plus')} Thử ghi giao dịch</button><button type="button" class="button" data-action="import-csv">${icon('upload')} Nhập CSV</button></div></section><section class="card"><div class="card-heading"><div><h3>Về bản thử nghiệm</h3><p>Giới hạn cần biết trước khi dùng.</p></div></div><ul class="guide-list"><li>Sổ thử nghiệm khởi tạo bằng <strong>dữ liệu mẫu</strong>; giao dịch bạn nhập sẽ trộn với dữ liệu mẫu. Không có bảng tính cá nhân nào được nạp sẵn.</li><li>Dữ liệu bạn thêm được lưu cục bộ trên trình duyệt này. Xóa dữ liệu trình duyệt có thể làm mất thông tin.</li><li>Có xuất CSV, sao lưu/khôi phục JSON và hoàn tác thao tác mới nhất ở mục Dữ liệu. Chưa sửa giao dịch cũ, xem trước CSV đầy đủ hoặc đối soát sao kê; hãy chỉ dùng dữ liệu thử nghiệm.</li><li>Chưa đồng bộ ngân hàng hoặc tự lấy giá thị trường. Giá tài sản cần bạn cập nhật.</li><li>“Còn lại theo lịch đã nhập” chưa gồm các khoản chưa lên lịch và không phải cam kết bạn có thể chi số đó.</li></ul><div class="guide-actions"><button type="button" class="button button-danger" data-action="reset-demo">${icon('refresh')} Đặt lại dữ liệu mẫu</button></div><div class="guide-disclaimer">Bản thử nghiệm dùng để khám phá quy trình sản phẩm, chưa phải công cụ tư vấn đầu tư hoặc số liệu kế toán đã đối soát.</div></section></div>`;
+  <div class="guide-lower"><section class="card"><div class="card-heading"><div><h3>Quy tắc tính quan trọng</h3><p>Giúp báo cáo thu chi sát thực tế hơn.</p></div></div><ul class="guide-list"><li>Mua hàng bằng thẻ là chi tiêu. Chuyển tiền trả thẻ chỉ thay đổi tài khoản và dư nợ, không phát sinh chi tiêu lần nữa.</li><li>Chuyển tiền giữa các tài khoản của bạn không phải thu nhập hay chi tiêu.</li><li>Mua tài sản làm giảm tiền sẵn có và tăng vốn đầu tư; giá trị tài sản được cập nhật riêng.</li><li>Khoản trả thẻ đã thanh toán cần gắn với khoản trong lịch để dự báo không trừ lần nữa.</li></ul><div class="guide-actions"><button type="button" class="button button-primary" data-action="add-transaction">${icon('plus')} Thử ghi giao dịch</button><button type="button" class="button" data-action="import-csv">${icon('upload')} Nhập CSV</button></div></section><section class="card"><div class="card-heading"><div><h3>Về bản thử nghiệm</h3><p>Giới hạn cần biết trước khi dùng.</p></div></div><ul class="guide-list"><li>Sổ mẫu trên trình duyệt có dữ liệu giả. Sổ tương thích trên điện thoại giữ dữ liệu bạn đã chọn, hoặc bắt đầu trống; không gộp với sổ mới.</li><li>Dữ liệu bạn thêm được lưu cục bộ trên trình duyệt này. Xóa dữ liệu trình duyệt có thể làm mất thông tin.</li><li>Có xuất CSV, sao lưu/khôi phục JSON và hoàn tác thao tác mới nhất ở mục Dữ liệu. Sửa giao dịch giữ lịch sử trước/sau và lý do; dữ liệu CSV nghi trùng cần xác nhận riêng. Chưa có đối soát sao kê.</li><li>Chưa đồng bộ ngân hàng hoặc tự lấy giá thị trường. Giá tài sản cần bạn cập nhật.</li><li>“Còn lại theo lịch đã nhập” chưa gồm các khoản chưa lên lịch và không phải cam kết bạn có thể chi số đó.</li></ul><div class="guide-actions"><button type="button" class="button button-danger" data-action="reset-demo">${icon('refresh')} Đặt lại dữ liệu mẫu</button></div><div class="guide-disclaimer">Bản thử nghiệm dùng để khám phá quy trình sản phẩm, chưa phải công cụ tư vấn đầu tư hoặc số liệu kế toán đã đối soát.</div></section></div>`;
 }
 
 function closeModal() { modalRevision++; pendingReadRevision++; allocationDraft = null; reviewedAllocationKey = ''; restoreDraft = null; restoreExportedState = null; document.getElementById('modal-root').innerHTML = ''; document.body.style.overflow = ''; pendingImportCsv = null; }
@@ -278,6 +296,16 @@ function openAssetModal(id) {
   const body = `<form id="asset-form" data-id="${safe(id)}"><div id="form-error"></div><div class="form-grid">${field('Tài sản', 'asset-name', `<input id="asset-name" value="${safe(a.name)}" disabled />`, true)}${field('Giá trị tại ngày định giá (VND)', 'currentValue', input('currentValue','number',displayedValue,'required min="0" step="1"'))}${field('Ngày định giá', 'asOf', input('asOf','date',today(),'required'))}</div><div class="form-note">Giá trị gợi ý là số đang hiển thị, đã gồm các khoản mua được ghi sau lần định giá trước. Hãy sửa theo giá trị thực tế tại ngày bạn chọn.</div></form>`;
   openModal('Cập nhật giá trị', 'Ghi giá trị và ngày định giá để số liệu có thời điểm rõ ràng.', body, `<button type="button" class="button" data-action="close-modal">Hủy</button><button type="submit" form="asset-form" class="button button-primary">Lưu giá trị</button>`);
 }
+function openNewAssetModal() {
+  const body = `<form id="new-asset-form"><div id="form-error"></div><div class="form-grid">${field('Tên tài sản', 'name', input('name','text','','required maxlength="500"'),true)}${field('Loại tài sản', 'assetType', '<select id="assetType" name="assetType">'+['gold','property','fund','stock','savings','other'].map(type=>`<option value="${type}">${assetType(type)}</option>`).join('')+'</select>')}${field('Vốn đã có trước sổ (VND)', 'costBasis', input('costBasis','number','0','required min="0" step="1"'))}${field('Giá trị hiện tại (VND)', 'currentValue', input('currentValue','number','0','required min="0" step="1"'))}${field('Ngày định giá', 'asOf', input('asOf','date',today(),`required max="${today()}"`))}</div><p>Đây là tài sản đã sở hữu: thêm tài sản không trừ tiền tài khoản và không ghi thu. Khoản mua mới cần ghi giao dịch Đầu tư riêng; dùng vốn đầu kỳ bằng 0 nếu chưa sở hữu trước.</p></form>`;
+  openModal('Thêm tài sản', 'Giữ riêng tài sản có sẵn và giao dịch mua mới.', body, '<button type="button" class="button" data-action="close-modal">Hủy</button><button type="submit" form="new-asset-form" class="button button-primary">Thêm tài sản</button>');
+}
+function openTransactionCorrectionModal(transactionId) {
+  const transaction = state.transactions.find(item => item.id === transactionId); if (!transaction) return;
+  const history = Array.isArray(state.transactionCorrections) ? state.transactionCorrections.filter(entry => entry.transactionId === transactionId) : [];
+  const body = `<form id="transaction-correction-form" data-id="${safe(transactionId)}"><div id="form-error"></div><div class="form-grid">${field('Số tiền (VND)', 'amount', input('amount','number',transaction.amount,'required min="1" step="1"'))}${field('Ngày hiệu lực', 'date', input('date','date',transaction.date,`required max="${today()}"`))}${field('Nhóm', 'category', input('category','text',transaction.category||'','maxlength="500"'))}${field('Ghi chú', 'note', input('note','text',transaction.note||'','maxlength="2000"'))}${field('Lý do sửa', 'reason', input('reason','text','','required maxlength="500"'),true)}</div><p>Giữ loại giao dịch, tài khoản, tài sản và khoản trong lịch. Tất cả giá trị trước/sau và lý do sửa được giữ trong bản sao JSON; quỹ hoặc số đã thanh toán phải tiếp tục đối soát hợp lệ.</p><p>Đã ghi ${history.length} lần sửa.</p></form>`;
+  openModal('Sửa giao dịch có lịch sử', 'Sửa số liệu đã nhập sai; khoản hoàn tiền thật cần ghi giao dịch mới.', body, '<button type="button" class="button" data-action="close-modal">Hủy</button><button type="submit" form="transaction-correction-form" class="button button-primary">Lưu sửa có lịch sử</button>');
+}
 function openPlanModal() {
   const cash = state.accounts.filter(a => a.type === 'cash');
   const body = `<form id="plan-form"><div id="form-error"></div><div class="form-grid">${field('Tên khoản dự kiến', 'label', input('label','text','','required maxlength="100" placeholder="Ví dụ: Trả thẻ tháng 10"'),true)}${field('Ngày dự kiến', 'date', input('date','date',today(),`required min="${today()}"`))}${field('Loại', 'kind', `<select id="kind" name="kind"><option value="expense">Tiền ra</option><option value="income">Tiền vào</option></select>`)}${field('Số tiền (VND)', 'amount', input('amount','number','','required min="1" step="1"'))}${field('Tài khoản thanh toán / nhận', 'accountId', `<select id="accountId" name="accountId" required>${options(cash)}</select>`)}${field('Gắn với thẻ (nếu trả thẻ)', 'cardId', `<select id="cardId" name="cardId">${options(state.cards,'','Không gắn với thẻ')}</select>`,true,'Chọn thẻ để có thể ghép giao dịch trả thẻ với khoản dự kiến này.')}</div></form>`;
@@ -285,7 +313,8 @@ function openPlanModal() {
 }
 function openImportModal() {
   pendingImportCsv = null;
-  const body = `<form id="import-form"><div id="form-error"></div><div class="form-grid">${field('Chọn tệp CSV', 'csv-file', `<input id="csv-file" name="csv-file" type="file" accept=".csv,text/csv" />`, true)}${field('Hoặc dán nội dung CSV', 'csv-text', `<textarea id="csv-text" name="csv-text" placeholder="date,kind,amount,accountId,..."></textarea>`, true)}</div><div class="form-note">Các cột có thể dùng: <span class="code-inline">date,kind,amount,accountId,fromAccountId,toAccountId,assetId,category,note,planId</span>. Có thể nhập ID hoặc tên tài khoản / tài sản như dữ liệu mẫu. Dòng nghi trùng sẽ được báo để bạn kiểm tra, không tự nhập.</div><div id="import-result"></div></form>`;
+  const picker = currentLegacyServices()?.native ? '<button type="button" class="button" data-action="read-native-csv">Chọn tệp CSV offline</button>' : '<input id="csv-file" name="csv-file" type="file" accept=".csv,text/csv" />';
+  const body = `<form id="import-form"><div id="form-error"></div><div class="form-grid">${field('Chọn tệp CSV', 'csv-file', picker, true)}${field('Hoặc dán nội dung CSV', 'csv-text', `<textarea id="csv-text" name="csv-text" placeholder="date,kind,amount,accountId,..."></textarea>`, true)}</div><div class="form-note">Các cột có thể dùng: <span class="code-inline">date,kind,amount,accountId,fromAccountId,toAccountId,assetId,category,note,planId</span>. Có thể nhập ID hoặc tên tài khoản / tài sản như dữ liệu mẫu. Dòng nghi trùng sẽ được báo để bạn kiểm tra, không tự nhập.</div><div id="import-result"></div></form>`;
   openModal('Nhập giao dịch CSV', 'Tệp được đọc tại trình duyệt. Có thể xuất CSV và sao lưu JSON ở mục Dữ liệu. Chưa có đối soát sao kê; chỉ dùng dữ liệu thử nghiệm.', body, `<button type="button" class="button" data-action="close-modal">Đóng</button><button type="submit" form="import-form" class="button button-primary">${icon('upload')} Nhập giao dịch</button>`);
 }
 function showFormError(message) { const host = document.getElementById('form-error'); if (host) host.innerHTML = `<div class="form-error">${safe(message)}</div>`; }
@@ -306,7 +335,7 @@ function readTransaction(form) {
 }
 function errorList(result) { return Array.isArray(result?.errors) ? result.errors.map(e => typeof e === 'string' ? e : e.message || JSON.stringify(e)).join(' · ') : String(result?.errors || 'Dữ liệu chưa hợp lệ.'); }
 async function handleSubmit(event) {
-  const form = event.target; if (!['transaction-form','asset-form','plan-form','import-form','account-form','allocation-form','template-form','restore-form'].includes(form.id)) return;
+  const form = event.target; if (!['transaction-form','asset-form','new-asset-form','transaction-correction-form','plan-form','import-form','account-form','allocation-form','template-form','restore-form'].includes(form.id)) return;
   event.preventDefault();
   if (writeBusy) { showFormError('Đang lưu thao tác trước, hãy đợi.'); return; }
   try {
@@ -336,6 +365,12 @@ async function handleSubmit(event) {
       const input = readTransaction(form); const validation = validateTransaction(state, input);
       if (!validation.ok) { showFormError(errorList(validation)); return; }
       await saveTransactionForm(form, input); closeModal(); toast('Đã lưu giao dịch.');
+    } else if (form.id === 'new-asset-form') {
+      const fd = new FormData(form);
+      await persistAndRender(addCompatibilityAsset(state, { name: String(fd.get('name') || ''), type: String(fd.get('assetType')), costBasis: Number(fd.get('costBasis')), currentValue: Number(fd.get('currentValue')), asOf: String(fd.get('asOf')) }), 'Thêm tài sản có sẵn'); closeModal(); toast('Đã thêm tài sản; tiền tài khoản không thay đổi.');
+    } else if (form.id === 'transaction-correction-form') {
+      const fd = new FormData(form);
+      await persistAndRender(correctCompatibilityTransaction(state, form.dataset.id, { amount: Number(fd.get('amount')), date: String(fd.get('date')), category: String(fd.get('category') || ''), note: String(fd.get('note') || ''), reason: String(fd.get('reason') || '') }), 'Sửa giao dịch có lịch sử'); closeModal(); toast('Đã lưu giá trị trước/sau và lý do sửa.');
     } else if (form.id === 'asset-form') {
       const fd = new FormData(form); await persistAndRender(updateAssetValue(state, form.dataset.id, Number(fd.get('currentValue')), String(fd.get('asOf'))), 'Cập nhật giá trị tài sản'); closeModal(); toast('Đã cập nhật giá trị tài sản.');
     } else if (form.id === 'plan-form') {
@@ -345,7 +380,7 @@ async function handleSubmit(event) {
       await persistAndRender({ ...state, plans: [...state.plans, { id, label, date, kind, amount, accountId, ...(cardId ? { cardId } : {}) }] }, 'Thêm lịch tiền'); closeModal(); toast('Đã thêm khoản dự kiến.');
     } else if (form.id === 'import-form') {
       const requestToken = ++pendingReadRevision, modalToken = modalRevision;
-      const file = form.querySelector('#csv-file').files?.[0];
+      const file = form.querySelector('#csv-file')?.files?.[0];
       if (file?.size > 5 * 1024 * 1024) throw new Error('Tệp CSV không quá 5 MiB.');
       const text = file ? await file.text() : form.querySelector('#csv-text').value;
       if (modalToken !== modalRevision || requestToken !== pendingReadRevision) return;
@@ -471,25 +506,58 @@ function renderData() {
   <section class="card template-card budget-section"><h3>Lịch sử cục bộ</h3><p>Giữ tối đa 100 mục gần nhất; không phải nhật ký kiểm toán độc lập.</p>${[...(state.activity || [])].reverse().map(entry => `<div class="list-row"><span class="list-body"><strong>${safe(entry.label)}</strong><small>${safe(entry.at)}</small></span></div>`).join('') || '<p>Chưa có thay đổi đã ghi trong phiên bản này.</p>'}</section>`;
 }
 function downloadText(text, filename, type = 'application/json;charset=utf-8') {
+  const services = currentLegacyServices();
+  if (services?.native) {
+    if (typeof services.onDownload !== 'function') throw new Error('Dịch vụ lưu tệp offline chưa sẵn sàng.');
+    return services.onDownload(text, filename, type);
+  }
   const url = URL.createObjectURL(new Blob([text], { type }));
   const link = document.createElement('a'); link.href = url; link.download = filename; link.click(); setTimeout(() => URL.revokeObjectURL(url), 60000);
+  return { status: 'requested' };
 }
 function downloadCurrentBackup() {
-  try { downloadText(exportBackup(state), 'mach-tien-backup.json'); restoreExportedState = JSON.stringify(state); toast('Đã yêu cầu tải bản sao. Hãy kiểm tra tệp trong thư mục tải xuống.'); }
+  restoreExportedState = null;
+  try {
+    const expectedState = JSON.stringify(state), expectedModal = modalRevision;
+    const completed = result => {
+      const native = currentLegacyServices()?.native;
+      if (native && result?.status !== 'written') { toast(result?.status === 'cancelled' ? 'Đã hủy lưu bản sao; chưa xác nhận sao lưu.' : 'Chưa lưu được bản sao. Sổ hiện tại chưa đổi.', 'error'); return false; }
+      if (JSON.stringify(state) !== expectedState || modalRevision !== expectedModal) { toast('Sổ hoặc màn hình đã đổi trong khi lưu. Hãy xuất lại trước khi khôi phục.', 'error'); return false; }
+      restoreExportedState = expectedState;
+      toast(native ? 'Đã lưu bản sao. Hãy kiểm tra tệp trước khi xác nhận khôi phục.' : 'Đã yêu cầu tải bản sao. Hãy kiểm tra tệp trong thư mục tải xuống.'); return true;
+    };
+    const result = downloadText(exportBackup(state), 'mach-tien-backup.json');
+    return result?.then ? result.then(completed).catch(error => { toast(error.message || 'Chưa lưu được bản sao.', 'error'); return false; }) : completed(result);
+  }
   catch (error) { toast(error.message, 'error'); }
 }
 function openRestoreModal() {
   restoreDraft = null; restoreExportedState = null;
-  openModal('Khôi phục từ JSON', 'Chỉ đọc và kiểm tra trước; chưa thay đổi sổ. Tối đa 5 MiB.', '<form id="restore-form"><div id="form-error"></div><label for="restore-file">Chọn bản sao JSON</label><input id="restore-file" type="file" accept=".json,application/json" required><div id="restore-preview"></div></form>', '<button type="button" class="button" data-action="close-modal">Hủy</button><button type="submit" form="restore-form" class="button button-primary">Đọc và xem trước</button>');
+  const picker = currentLegacyServices()?.native ? '<p>Nhấn Đọc và xem trước để chọn bản sao JSON từ bộ nhớ thiết bị.</p>' : '<label for="restore-file">Chọn bản sao JSON</label><input id="restore-file" type="file" accept=".json,application/json" required>';
+  openModal('Khôi phục từ JSON', 'Chỉ đọc và kiểm tra trước; chưa thay đổi sổ. Tối đa 5 MiB.', '<form id="restore-form"><div id="form-error"></div>' + picker + '<div id="restore-preview"></div></form>', '<button type="button" class="button" data-action="close-modal">Hủy</button><button type="submit" form="restore-form" class="button button-primary">Đọc và xem trước</button>');
+}
+async function readNativeText() {
+  const services = currentLegacyServices();
+  if (!services?.native || typeof services.onReadBackup !== 'function') throw new Error('Dịch vụ đọc tệp offline chưa sẵn sàng.');
+  const result = await services.onReadBackup();
+  if (!result) return null;
+  if (typeof result.text !== 'string' || new TextEncoder().encode(result.text).length > 5 * 1024 * 1024 || !Number.isSafeInteger(result.size) || result.size < 0 || result.size > 5 * 1024 * 1024) throw new Error('Chọn tệp UTF-8 không quá 5 MiB.');
+  return result.text;
 }
 async function previewRestore(form) {
   restoreDraft = null; restoreExportedState = null;
-  const file = form.querySelector('#restore-file').files?.[0];
-  if (!file || file.size > 5 * 1024 * 1024) throw new Error('Chọn tệp JSON không quá 5 MiB.');
+  document.getElementById('restore-preview').innerHTML = '';
   const requestToken = ++pendingReadRevision, modalToken = modalRevision;
-  const text = await file.text();
+  let text;
+  if (currentLegacyServices()?.native) text = await readNativeText();
+  else {
+    const file = form.querySelector('#restore-file')?.files?.[0];
+    if (!file || file.size > 5 * 1024 * 1024) throw new Error('Chọn tệp JSON không quá 5 MiB.');
+    text = await file.text();
+  }
+  if (text === null) return;
   if (modalToken !== modalRevision || requestToken !== pendingReadRevision) return;
-  const candidate = parseBackup(text);
+  const candidate = inspectCompatibilityBook(text).state;
   const old = backupSummary(state), next = backupSummary(candidate);
   const labels = { transactions: 'Giao dịch', accounts: 'Tài khoản', assets: 'Tài sản', templates: 'Mẫu riêng', allocations: 'Lần phân bổ', netWorth: 'Tài sản ròng', liquidCash: 'Tiền mặt/ngân hàng' };
   document.getElementById('restore-preview').innerHTML = `<h3>Bản sao hợp lệ · chưa thay sổ</h3><div class="table-wrap"><table class="data-table"><thead><tr><th></th><th>Hiện tại</th><th>Sau khôi phục</th></tr></thead><tbody>${Object.entries(labels).map(([key, label]) => `<tr><td>${label}</td><td>${key === 'netWorth' || key === 'liquidCash' ? money(old[key]) : old[key]}</td><td>${key === 'netWorth' || key === 'liquidCash' ? money(next[key]) : next[key]}</td></tr>`).join('')}</tbody></table></div><p>Thay toàn bộ sổ cá nhân, không gộp hai sổ. Lịch sử cục bộ ghi thao tác khôi phục; hoàn tác mới nhất giữ sổ hiện tại.</p><button type="button" class="button" data-action="export-json">1. Xuất sổ hiện tại trước khi thay</button><label class="restore-ack"><input type="checkbox" id="restore-ack"> 2. Tôi đã kiểm tra tệp sao lưu hiện tại đã tải được và hiểu sổ sẽ bị thay thế</label><button type="button" class="button button-danger" data-action="confirm-restore">3. Xác nhận thay toàn bộ sổ</button>`;
@@ -521,11 +589,11 @@ document.addEventListener('click', async event => {
       try {
         const raw = globalThis.localStorage.getItem(storageKey);
         if (!raw) throw new Error('Không tìm thấy dữ liệu cũ.');
-        const url = URL.createObjectURL(new Blob([raw], { type: 'text/plain;charset=utf-8' }));
-        const link = document.createElement('a'); link.href = url; link.download = 'mach-tien-du-lieu-cu.txt'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 60000);
-        toast('Đã tải bản sao dữ liệu cũ.');
+        const result = await downloadText(raw, currentLegacyServices()?.native ? 'mach-tien-du-lieu-cu.json' : 'mach-tien-du-lieu-cu.txt', 'application/json;charset=utf-8');
+        if (currentLegacyServices()?.native && result?.status !== 'written') throw new Error('Chưa lưu bản sao dữ liệu cũ; dữ liệu vẫn được giữ nguyên.');
+        toast(currentLegacyServices()?.native ? 'Đã lưu bản sao dữ liệu cũ.' : 'Đã yêu cầu tải bản sao dữ liệu cũ; hãy kiểm tra tệp.');
       } catch (error) { toast(error.message || 'Không thể tải bản sao.', 'error'); }
-    } else if (action === 'reset-demo') {
+    } else if (action === 'reset-demo' && !currentLegacyServices()?.native) {
       if (window.confirm('Đặt lại dữ liệu mẫu? Dữ liệu cũ trên trình duyệt này sẽ bị xóa. Hãy tải bản sao trước nếu bạn cần giữ lại.')) {
         try { state = await resetState(); storageError = null; view = 'dashboard'; render(); toast('Đã đặt lại dữ liệu mẫu.'); }
         catch (error) { toast(error.message || 'Không thể đặt lại.', 'error'); }
@@ -546,8 +614,17 @@ document.addEventListener('click', async event => {
     case 'add-budget-row': addBudgetRow(); break;
     case 'remove-budget-row': removeBudgetRow(Number(action.dataset.index)); break;
     case 'preview-allocation': showAllocationPreview(); break;
-    case 'export-json': downloadCurrentBackup(); break;
-    case 'export-csv': downloadText(exportTransactionsCsv(state), 'mach-tien-giao-dich.csv', 'text/csv;charset=utf-8'); break;
+    case 'export-json': await downloadCurrentBackup(); break;
+    case 'export-csv':
+      try { const result = await downloadText(exportTransactionsCsv(state), 'mach-tien-giao-dich.csv', 'text/csv;charset=utf-8'); if (currentLegacyServices()?.native && result?.status !== 'written') throw new Error('Chưa lưu tệp CSV; sổ hiện tại chưa đổi.'); }
+      catch (error) { toast(error.message || 'Chưa lưu được tệp CSV.', 'error'); }
+      break;
+    case 'read-native-csv': {
+      const requestToken = ++pendingReadRevision, modalToken = modalRevision;
+      try { const text = await readNativeText(); if (text !== null && requestToken === pendingReadRevision && modalToken === modalRevision) { document.getElementById('csv-text').value = text; pendingImportCsv = null; toast('Đã đọc tệp; kiểm tra nội dung rồi nhấn Nhập giao dịch.'); } }
+      catch (error) { showFormError(error.message || 'Chưa đọc được CSV.'); }
+      break;
+    }
     case 'restore-json': openRestoreModal(); break;
     case 'confirm-restore': await confirmRestore(); break;
     case 'undo-change': await performUndo(); break;
@@ -565,10 +642,13 @@ document.addEventListener('click', async event => {
       break;
     }
     case 'update-asset': openAssetModal(action.dataset.id); break;
+    case 'add-asset': openNewAssetModal(); break;
+    case 'correct-transaction': openTransactionCorrectionModal(action.dataset.id); break;
     case 'add-plan': openPlanModal(); break;
     case 'import-csv': openImportModal(); break;
     case 'close-modal': case 'close-modal-backdrop': closeModal(); break;
     case 'reset-demo':
+      if (currentLegacyServices()?.native) { toast('Sổ tương thích không nạp lại dữ liệu mẫu.', 'error'); break; }
       if (window.confirm('Đặt lại dữ liệu mẫu? Sổ hiện tại sẽ được thay thế; có thể hoàn tác thao tác này trước khi ghi thao tác khác.')) { try { await persistAndRender(createDemoState(), 'Đặt lại dữ liệu mẫu'); txSearch = ''; txFilter = 'all'; setView('dashboard'); toast('Đã đặt lại dữ liệu mẫu.'); } catch (error) { toast(error.message, 'error'); } }
       break;
   }
@@ -613,4 +693,8 @@ document.addEventListener('input', event => {
 });
 document.addEventListener('submit', handleSubmit);
 document.addEventListener('keydown', event => { if (event.key === 'Escape' && !writeBusy) closeModal(); });
+onLegacyServicesChanged(services => {
+  if (services?.native && initialBookWasAbsent && !storageError) { state = createEmptyCompatibilityBook(); initialBookWasAbsent = false; }
+  render();
+});
 render();

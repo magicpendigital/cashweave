@@ -33,5 +33,25 @@ export function dom(document) {
     for(const [key,value] of Object.entries({class:'nav-icon',viewBox:'0 0 24 24',width:'24',height:'24',fill:'none',stroke:'currentColor','stroke-width':'1.8','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true',focusable:'false'}))svg.setAttribute(key,value);
     const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d',paths[name]||paths.menu);svg.append(path);return svg;
   }
-  return {h,field,input,select,button,table,icon};
+  // Run at the render boundary so direct commits and route links agree.
+  // Same-view updates retain browser scroll anchoring and editable focus.
+  let viewKey = null, viewTarget = null;
+  function viewTransition(key) {
+    const changed = key !== viewKey, hadContentFocus = document.activeElement === viewTarget;
+    return target => {
+      // Shared views render once while detached during parent composition.
+      // That must not consume a navigation or alter the parent's viewport.
+      if (!target || target.isConnected === false) return;
+      viewKey = key; viewTarget = target;
+      if (changed || hadContentFocus) {
+        target.setAttribute('tabindex', '-1');
+        target.focus?.({ preventScroll: true });
+      }
+      if (changed && document.scrollingElement) {
+        document.scrollingElement.scrollLeft = 0;
+        document.scrollingElement.scrollTop = 0;
+      }
+    };
+  }
+  return {h,field,input,select,button,table,icon,viewTransition};
 }

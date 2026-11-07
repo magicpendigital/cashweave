@@ -33,7 +33,26 @@ function fixture(t) {
   bindReceipt();
   return {root,profile,manifest,run,record,prepare,receipt,bindReceipt};
 }
-test('valid synthetic offline evidence passes without granting release authority',t=>{const f=fixture(t);const r=f.run();assert.equal(r.status,'PASS');assert.equal(r.releaseAuthorized,false);});
+test('valid synthetic offline evidence passes without granting release authority',t=>{const f=fixture(t);const r=f.run();assert.equal(r.status,'PASS');assert.equal(r.releaseAuthorized,false);assert.deepEqual(r.results.filter(check=>check.id==='approval'),[{id:'approval',status:'PASS',detail:'APPROVAL_BINDING'}]);});
+for (const [label,value] of [['null',null],['false',false],['zero',0],['empty string',''],['empty array',[]],['true',true],['positive number',1],['nonempty string','APPROVE']]) {
+  test(`approval JSON ${label} blocks an otherwise valid evidence bundle`,t=>{
+    const f=fixture(t),{bytes}=f.prepare();
+    const result=validateRelease(f.root,bytes,Buffer.from(JSON.stringify(value)));
+    assert.equal(result.status,'BLOCKED');
+    assert.equal(result.releaseAuthorized,false);
+    assert.deepEqual(result.results.filter(check=>check.id==='approval'),[{id:'approval',status:'BLOCKED',detail:'EXACT_OWNER_APPROVAL_REQUIRED'}]);
+  });
+}
+test('malformed and incomplete object approvals each produce one blocking approval result',t=>{
+  const f=fixture(t),{bytes}=f.prepare();
+  for(const raw of ['', '{', '{}']){
+    const result=validateRelease(f.root,bytes,Buffer.from(raw)),checks=result.results.filter(check=>check.id==='approval');
+    assert.equal(result.status,'BLOCKED');
+    assert.equal(result.releaseAuthorized,false);
+    assert.equal(checks.length,1);
+    assert.equal(checks[0].status,'BLOCKED');
+  }
+});
 test('missing target blocks',t=>{const f=fixture(t);f.manifest.target={id:'production',kind:'production'};f.receipt.target=f.manifest.target;f.bindReceipt();assert.equal(f.run().status,'BLOCKED');});
 test('changed source fails',t=>{const f=fixture(t);fs.writeFileSync(path.join(f.root,'src/app.js'),'changed');assert.equal(f.run().status,'FAIL');});
 test('new unrecorded source fails',t=>{const f=fixture(t);fs.writeFileSync(path.join(f.root,'src/new.js'),'changed');assert.equal(f.run().status,'FAIL');});

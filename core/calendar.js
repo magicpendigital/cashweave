@@ -1,7 +1,7 @@
 import { isValidDate, addDays } from '../ledger.js';
 export { isValidDate, addDays };
 export function requireDate(value) { if (!isValidDate(value)) throw new Error('INVALID_LOCAL_DATE'); return value; }
-export function requireTimezone(value) { try { new Intl.DateTimeFormat('en-US', { timeZone: value }).format(); } catch { throw new Error('INVALID_TIMEZONE'); } return value; }
+export function requireTimezone(value) { if (typeof value !== 'string' || !value || value.length > 128) throw new Error('INVALID_TIMEZONE'); try { new Intl.DateTimeFormat('en-US', { timeZone: value }).format(); } catch { throw new Error('INVALID_TIMEZONE'); } return value; }
 export function todayInTimezone(timezoneId, now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-US', { timeZone: requireTimezone(timezoneId), year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
   const get = type => parts.find(p => p.type === type).value;

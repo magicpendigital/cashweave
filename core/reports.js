@@ -30,12 +30,18 @@ export function reportDescriptor(state, input) {
   return descriptor;
 }
 const inPeriod = (date, d) => date >= d.startLocalDateInclusive && date < d.endLocalDateExclusive;
-function accountInScope(state, accountId, d) { const account = entity(state, 'accounts', accountId); return account.currencyCode === d.currencyCode && (!d.accountIds.length || d.accountIds.includes(account.id)) && (d.includeArchived || !account.archivedAtUtc); }
+function accountInScope(state, accountId, d, lookup = entity) { const account = lookup(state, 'accounts', accountId); return account.currencyCode === d.currencyCode && (!d.accountIds.length || d.accountIds.includes(account.id)) && (d.includeArchived || !account.archivedAtUtc); }
+// Each report invocation owns its indexes. First occurrence matches entity's
+// Array.find behavior even for an unvalidated duplicate-ID input.
+function reportLookup(state) {
+  const indexes=new Map();
+  return (_state,collection,id)=>{if(!indexes.has(collection)){const index=new Map();for(const item of state[collection])if(!index.has(item.id))index.set(item.id,item);indexes.set(collection,index);}const result=indexes.get(collection).get(id);if(!result)throw new Error(`UNKNOWN_${collection.toUpperCase()}`);return result;};
+}
 const byDate = (a, b) => a.effectiveLocalDate.localeCompare(b.effectiveLocalDate) || (a.stableOrder || 0) - (b.stableOrder || 0) || a.id.localeCompare(b.id);
 export async function queryReport(state, input, { cursor = 0, pageSize = 100 } = {}) {
-  const descriptor = reportDescriptor(state, input), d = descriptor, rows = [], excluded = {};
+  const descriptor = reportDescriptor(state, input), d = descriptor, rows = [], excluded = {},entity=reportLookup(state);
   const push = (row, contribution) => rows.push({ ...clone(row), contributionMinor: checked(contribution) });
-  const postings = state.postings.filter(p => p.effectiveLocalDate < d.endLocalDateExclusive && accountInScope(state, p.accountId, d));
+  const postings = state.postings.filter(p => p.effectiveLocalDate < d.endLocalDateExclusive && accountInScope(state, p.accountId, d,entity));
   if (['ActualIncome','ActualExpense','CashChangeInPeriod','CashBalanceAsOf'].includes(d.metricId)) {
     const origin = d.metricId === 'ActualIncome' ? 'INCOME' : d.metricId === 'ActualExpense' ? 'EXPENSE' : '';
     if (d.metricId === 'CashBalanceAsOf') {
@@ -77,9 +83,10 @@ export async function queryReport(state, input, { cursor = 0, pageSize = 100 } =
   return { totalMinor, contributorRows: rows.slice(cursor,cursor + pageSize), groups: [...groups].map(([key, subtotalMinor]) => ({ key, subtotalMinor })), excludedSummary: excluded, descriptor: clone(d), descriptorHash: await digest(d), revision: state.revision, contributionCount: rows.length, paginationCursor: cursor + pageSize < rows.length ? cursor + pageSize : null };
 }
 export function dailyAccountTimeline(state, descriptor) {
-  const d = reportDescriptor(state, { ...descriptor, metricId: 'CashBalanceAsOf' });
-  const postings = state.postings.filter(p => p.effectiveLocalDate < d.endLocalDateExclusive && accountInScope(state,p.accountId,d)).sort(byDate);
+  const d = reportDescriptor(state, { ...descriptor, metricId: 'CashBalanceAsOf' }),lookup=reportLookup(state);
+  const postings = state.postings.filter(p => p.effectiveLocalDate < d.endLocalDateExclusive && accountInScope(state,p.accountId,d,lookup)).sort(byDate);
   const opening = sum(postings.filter(p => p.effectiveLocalDate < d.startLocalDateInclusive).map(p => p.signedAmountMinor)); let balance = minor(opening);
-  const days = daysInRange(d.startLocalDateInclusive,d.endLocalDateExclusive).map(date => { const rows = postings.filter(p => p.effectiveLocalDate === date); const movement = sum(rows.map(p => p.signedAmountMinor)); balance += minor(movement); return { date, openingMinor: checked(balance - minor(movement)), movementMinor: movement, closingMinor: checked(balance), postingIds: rows.map(p => p.id) }; });
+  const byDay=new Map();for(const posting of postings){if(!byDay.has(posting.effectiveLocalDate))byDay.set(posting.effectiveLocalDate,[]);byDay.get(posting.effectiveLocalDate).push(posting);}
+  const days = daysInRange(d.startLocalDateInclusive,d.endLocalDateExclusive).map(date => { const rows = byDay.get(date)||[]; const movement = sum(rows.map(p => p.signedAmountMinor)); balance += minor(movement); return { date, openingMinor: checked(balance - minor(movement)), movementMinor: movement, closingMinor: checked(balance), postingIds: rows.map(p => p.id) }; });
   return { descriptor: d, openingBeforeRangeMinor: opening, days, closingMinor: checked(balance), revision: state.revision };
 }

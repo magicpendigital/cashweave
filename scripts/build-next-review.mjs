@@ -15,7 +15,7 @@ async function bundle(path){
  if(/^import\s/m.test(source))throw new Error('Unsupported import '+name);
  const names=[...source.matchAll(/^export\s+(?:async\s+)?(?:function|const|let)\s+(\w+)/gm)].map(m=>m[1]);
  if(/^export const INT64_MIN =/m.test(source))names.push('INT64_MAX');
- source=source.replace(/^export\s*\{([^}]+)\};?/gm,(_,items)=>{for(const item of items.split(',')){const parts=item.trim().split(/\s+as\s+/);names.push(parts.length===2?parts[1]+':'+parts[0]:parts[0]);}return '';});
+ source=source.replace(/^export\s*\{([^}]+)\};?[ \t]*$/gm,(_,items)=>{for(const item of items.split(',')){const parts=item.trim().split(/\s+as\s+/);names.push(parts.length===2?parts[1]+':'+parts[0]:parts[0]);}return '';});
  source=source.replace(/^export\s+(?=(?:async\s+)?(?:function|const|let)\s)/gm,'');
  if(/^export\s/m.test(source))throw new Error('Unsupported export '+name);
  modules.set(name,`modules[${JSON.stringify(name)}]=(()=>{\n${source}\nreturn {${names.join(',')}};\n})();`);

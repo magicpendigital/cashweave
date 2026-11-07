@@ -4,6 +4,7 @@ mobile-www/
 .npm-cache/
 .gradle-home/
 .android-sdk/
+.toolchains/
 *.jks
 *.keystore
 android/local.properties
@@ -36,3 +37,11 @@ android/app/src/main/assets/capacitor.plugins.json
 /android/.idea/
 /android/captures/
 *.log
+__pycache__/
+ios/App/App/public/
+ios/App/App/capacitor.config.json
+ios/App/build/
+ios/**/DerivedData/
+ios/**/xcuserdata/
+*.xcarchive
+*.ipa

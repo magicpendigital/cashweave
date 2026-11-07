@@ -2,11 +2,19 @@ import { id, clone,canonical } from './identity.js';
 import { money, minor, checked, sum, CURRENCY_TABLE_VERSION } from './money.js';
 import { requireTimezone, requireDate,monthlyDate } from './calendar.js';
 function requireUtc(value){if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value)||Number.isNaN(Date.parse(value)))throw new Error('INVALID_UTC_METADATA');requireDate(value.slice(0,10));}
+const isRecordId = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+export function requireLocale(value) {
+  if (typeof value !== 'string' || !value || value.length > 128) throw new Error('INVALID_LOCALE');
+  try { if (Intl.getCanonicalLocales(value).length !== 1) throw new Error(); new Intl.NumberFormat(value).format(0); new Intl.DateTimeFormat(value).format(); }
+  catch { throw new Error('INVALID_LOCALE'); }
+  return value;
+}
 
 export const COLLECTIONS = Object.freeze(['accounts', 'categories', 'budgetPools', 'envelopes', 'operations', 'postings', 'planSeries', 'planRevisions', 'occurrences', 'planExceptions', 'settlements', 'templates', 'templateVersions', 'fundingSources', 'allocationApplications', 'allocationEntries', 'allocationCycles', 'spendLinks', 'receipts', 'audit', 'migrations']);
 export function createDataset({ namespace = 'personal', locale = 'vi-VN', timezoneId = 'Asia/Ho_Chi_Minh', currencyCode = 'VND' } = {}) {
   if (!['personal', 'sandbox', 'staging'].includes(namespace)) throw new Error('INVALID_NAMESPACE');
-  money(currencyCode, '0'); requireTimezone(timezoneId); new Intl.NumberFormat(locale).format(0);
+  if (typeof currencyCode !== 'string') throw new Error('UNSUPPORTED_CURRENCY');
+  money(currencyCode, '0'); requireTimezone(timezoneId); requireLocale(locale);
   const datasetId = id(), now = new Date().toISOString();
   return { schemaVersion: 3, datasetId, namespace, revision: 0, currencyTableVersion: CURRENCY_TABLE_VERSION,
     profile: { id: id(), datasetId, createdAtUtc: now, updatedAtUtc: now, revision: 0, locale, timezoneId, defaultCurrencyCode: currencyCode, schemaVersion: 3, onboardingCompletedAtUtc: null },
@@ -23,6 +31,17 @@ export function entity(state, collection, entityId) {
 export function accountBalance(state, accountId, endExclusive = '9999-12-31') {
   entity(state, 'accounts', accountId);
   return sum(state.postings.filter(p => p.accountId === accountId && p.effectiveLocalDate < endExclusive).map(p => p.signedAmountMinor));
+}
+export function openingBalanceSummary(state, accountId, endExclusive = '9999-12-31') {
+  entity(state, 'accounts', accountId);
+  const opening = state.operations.find(operation => operation.operationType === 'OPENING' && state.postings.some(posting => posting.operationId === operation.id && posting.accountId === accountId) && !state.operations.some(reversal => reversal.reversalOfOperationId === operation.id));
+  if (!opening) throw new Error('OPENING_OPERATION_UNAVAILABLE');
+  const posting = state.postings.find(item => item.operationId === opening.id);
+  const corrections = new Set(state.operations.filter(operation => operation.operationType === 'ADJUSTMENT' && operation.adjustmentForOperationId === opening.id).map(operation => operation.id));
+  const correctionPostings = new Set(state.postings.filter(item => corrections.has(item.operationId)).map(item => item.id));
+  const movements = state.postings.filter(item => item.effectiveLocalDate < endExclusive && (correctionPostings.has(item.id) || correctionPostings.has(item.reversesPostingId)));
+  const adjustmentMinor = sum(movements.map(item => item.signedAmountMinor));
+  return { openingOperationId: opening.id, openingEffectiveLocalDate: opening.effectiveLocalDate, openingAmountMinor: posting.signedAmountMinor, adjustmentMinor, correctedOpeningAmountMinor: checked(minor(posting.signedAmountMinor) + minor(adjustmentMinor)), lastEffectiveLocalDate: [opening.effectiveLocalDate, ...movements.map(item => item.effectiveLocalDate)].sort().at(-1) };
 }
 export function envelopeBalance(state, envelopeId, endExclusive = '9999-12-31') {
   entity(state, 'envelopes', envelopeId);
@@ -60,19 +79,30 @@ export function planSummary(state, occurrenceId, cutoffExclusive = '9999-12-31')
 export function validateSnapshot(state) {
   canonical(state); // Exportability is part of validity; undefined/function/BigInt fields cannot activate.
   if (state?.schemaVersion !== 3 || !Number.isSafeInteger(state.revision) || state.revision < 0) throw new Error('INVALID_SCHEMA');
-  money(state.profile.defaultCurrencyCode, '0'); requireTimezone(state.profile.timezoneId); new Intl.NumberFormat(state.profile.locale).format(0);
+  if (!state.profile || typeof state.profile !== 'object' || Array.isArray(state.profile) || !isRecordId(state.datasetId) || !isRecordId(state.profile.id) || state.profile.schemaVersion !== 3 || !Number.isSafeInteger(state.profile.revision) || state.profile.revision < 0 || state.profile.revision > state.revision) throw new Error('INVALID_PROFILE');
+  if (typeof state.profile.defaultCurrencyCode !== 'string') throw new Error('UNSUPPORTED_CURRENCY');
+  money(state.profile.defaultCurrencyCode, '0'); requireTimezone(state.profile.timezoneId); requireLocale(state.profile.locale);
   if (!['personal', 'sandbox', 'staging'].includes(state.namespace) || state.profile.datasetId !== state.datasetId) throw new Error('INVALID_DATASET');
-  requireUtc(state.profile.createdAtUtc);requireUtc(state.profile.updatedAtUtc);if(state.profile.onboardingCompletedAtUtc)requireUtc(state.profile.onboardingCompletedAtUtc);
+  requireUtc(state.profile.createdAtUtc);requireUtc(state.profile.updatedAtUtc);if(state.profile.onboardingCompletedAtUtc !== null)requireUtc(state.profile.onboardingCompletedAtUtc);
   const allIds = new Set();
   for (const collection of COLLECTIONS) {
     if (!Array.isArray(state[collection]) || state[collection].length > 100000) throw new Error('INVALID_COLLECTION');
     for (const item of state[collection]) {
-      if (typeof item.id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item.id) || allIds.has(item.id) || item.datasetId !== state.datasetId) throw new Error('INVALID_RECORD_ID');
+      if (!isRecordId(item.id) || allIds.has(item.id) || item.datasetId !== state.datasetId) throw new Error('INVALID_RECORD_ID');
       allIds.add(item.id);
       requireUtc(item.createdAtUtc);requireUtc(item.updatedAtUtc);
       if (!Number.isSafeInteger(item.revision) || item.revision > state.revision || item.revision < 0) throw new Error('INVALID_RECORD_REVISION');
     }
   }
+  // Per-validation indexes are created only after collection/ID validation.
+  // Arrays retain their original order; nothing is cached on mutable state.
+  const byId=Object.fromEntries(COLLECTIONS.map(collection=>[collection,new Map(state[collection].map(item=>[item.id,item]))]));
+  const entity=(_state,collection,entityId)=>{const result=byId[collection].get(entityId);if(!result)throw new Error(`UNKNOWN_${collection.toUpperCase()}`);return result;};
+  const group=(items,field)=>{const result=new Map();for(const item of items){const key=item[field];if(!result.has(key))result.set(key,[]);result.get(key).push(item);}return result;};
+  const operationPostings=group(state.postings,'operationId'),settlementsByPosting=group(state.settlements,'ledgerPostingId'),spendByPosting=group(state.spendLinks,'expensePostingId'),sourcesByPosting=group(state.fundingSources,'sourcePostingId'),entriesByApplication=group(state.allocationEntries,'applicationId');
+  const reversalsByPosting=new Map();for(const posting of state.postings)if(!reversalsByPosting.has(posting.reversesPostingId))reversalsByPosting.set(posting.reversesPostingId,posting);
+  const consumptionIndexes=new Map();
+  const sourceEvents=(sourceId,eligibleOnly=false)=>{if(!consumptionIndexes.has(eligibleOnly)){const grouped=new Map();for(const app of state.allocationApplications.filter(app=>!eligibleOnly||app.allocationEffectiveLocalDate<'9999-12-31'))for(const item of app.sourceConsumption.filter(()=>true)){if(!grouped.has(item.sourceId))grouped.set(item.sourceId,[]);grouped.get(item.sourceId).push({date:app.allocationEffectiveLocalDate,amountMinor:item.signedAmountMinor});}consumptionIndexes.set(eligibleOnly,grouped);}return consumptionIndexes.get(eligibleOnly).get(sourceId)||[];};
   for (const account of state.accounts) {
     money(account.currencyCode, '0');
     if (!['CASH', 'BANK'].includes(account.type) || !account.name?.trim()) throw new Error('INVALID_ACCOUNT');
@@ -86,16 +116,21 @@ export function validateSnapshot(state) {
   for (const operation of state.operations) {
     if (!['INCOME','EXPENSE','TRANSFER','OPENING','ADJUSTMENT','REVERSAL'].includes(operation.operationType)) throw new Error('INVALID_OPERATION_TYPE');
     requireDate(operation.effectiveLocalDate);
-    const legs = state.postings.filter(p => p.operationId === operation.id);
+    const legs = operationPostings.get(operation.id)||[];
     if (!legs.length) throw new Error('OPERATION_WITHOUT_POSTINGS');
     if (operation.operationType === 'TRANSFER' && (legs.length !== 2 || legs[0].currencyCode !== legs[1].currencyCode || legs[0].accountId === legs[1].accountId || sum(legs.map(p => p.signedAmountMinor)) !== '0')) throw new Error('UNBALANCED_TRANSFER');
     if (operation.operationType !== 'TRANSFER' && operation.operationType !== 'REVERSAL' && legs.length !== 1) throw new Error('INVALID_POSTING_COUNT');
     if (operation.operationType !== 'REVERSAL' && legs.some(p => p.reportingOrigin !== operation.operationType)) throw new Error('OPERATION_ORIGIN_MISMATCH');
+    if (operation.adjustmentForOperationId) {
+      const original = entity(state, 'operations', operation.adjustmentForOperationId), openingPosting = operationPostings.get(original.id)?.[0];
+      if (operation.operationType !== 'ADJUSTMENT' || original.operationType !== 'OPENING' || legs[0].accountId !== openingPosting.accountId || legs[0].currencyCode !== openingPosting.currencyCode || operation.effectiveLocalDate < original.effectiveLocalDate || typeof operation.reason !== 'string' || !operation.reason.trim() || minor(legs[0].signedAmountMinor) === 0n) throw new Error('INVALID_OPENING_ADJUSTMENT');
+    }
     if (operation.operationType === 'REVERSAL') {
       const original = entity(state, 'operations', operation.reversalOfOperationId);
       if (original.operationType === 'REVERSAL' || reversedOperations.has(original.id)) throw new Error('DUPLICATE_REVERSAL');
+      if (operation.effectiveLocalDate < original.effectiveLocalDate) throw new Error('REVERSAL_BEFORE_OPERATION');
       reversedOperations.add(original.id);
-      const originals = state.postings.filter(p => p.operationId === original.id);
+      const originals = operationPostings.get(original.id)||[];
       if (originals.length !== legs.length || legs.some(p => !originals.some(o => p.reversesPostingId === o.id && p.accountId === o.accountId && p.signedAmountMinor === checked(-minor(o.signedAmountMinor)) && p.reportingOrigin === o.reportingOrigin))) throw new Error('INVALID_REVERSAL');
     }
   }
@@ -141,26 +176,27 @@ export function validateSnapshot(state) {
     }
   }
   for (const posting of state.postings) {
-    const linked = BigInt(sum(state.settlements.filter(s => s.ledgerPostingId === posting.id).map(s => s.signedAmountMinor)));
+    const links=settlementsByPosting.get(posting.id)||[],linked = BigInt(sum(links.map(s => s.signedAmountMinor)));
     const magnitude = minor(posting.signedAmountMinor) < 0n ? -minor(posting.signedAmountMinor) : minor(posting.signedAmountMinor);
     if (linked < 0n || linked > magnitude || (reversedPostings.has(posting.id) && linked !== 0n)) throw new Error('SETTLEMENT_CAPACITY_EXCEEDED');
-    const reversing=state.postings.find(p=>p.reversesPostingId===posting.id);
-    const events=state.settlements.filter(s=>s.ledgerPostingId===posting.id).map(s=>({date:s.effectiveLocalDate,amountMinor:s.signedAmountMinor}));
+    const reversing=reversalsByPosting.get(posting.id);
+    const events=links.map(s=>({date:s.effectiveLocalDate,amountMinor:s.signedAmountMinor}));
     if(reversing)events.push({date:reversing.effectiveLocalDate,amountMinor:'0'});
     assertChronologicalCapacity(events,date=>date<posting.effectiveLocalDate||reversing&&date>=reversing.effectiveLocalDate?0n:magnitude,'SETTLEMENT_HISTORICAL_CAPACITY_EXCEEDED');
   }
   for (const source of state.fundingSources) {
     const posting = entity(state, 'postings', source.sourcePostingId), pool = entity(state, 'budgetPools', source.budgetPoolId);
-    if (!['INCOME','OPENING'].includes(posting.reportingOrigin) || posting.reversesPostingId || posting.currencyCode !== source.currencyCode || pool.currencyCode !== source.currencyCode || minor(source.eligibleAmountMinor) <= 0n || minor(source.eligibleAmountMinor) > minor(posting.signedAmountMinor)) throw new Error('INVALID_FUNDING_SOURCE');
-    if(entity(state,'accounts',posting.accountId).budgetPoolId!==pool.id||!entity(state,'accounts',posting.accountId).includeInBudget||state.fundingSources.filter(s=>s.sourcePostingId===posting.id).length!==1)throw new Error('INVALID_FUNDING_SOURCE_MEMBERSHIP');
-    const capacity = sourceCapacity(state, source.id); if (minor(capacity.consumed) < 0n || minor(capacity.remaining) < 0n) throw new Error('SOURCE_CAPACITY_EXCEEDED');
-    const reversing=state.postings.find(p=>p.reversesPostingId===posting.id);
-    const events=state.allocationApplications.flatMap(app=>app.sourceConsumption.filter(c=>c.sourceId===source.id).map(c=>({date:app.allocationEffectiveLocalDate,amountMinor:c.signedAmountMinor})));
+    if (!['INCOME','OPENING','ADJUSTMENT'].includes(posting.reportingOrigin) || posting.reportingOrigin === 'ADJUSTMENT' && !entity(state,'operations',posting.operationId).adjustmentForOperationId || posting.reversesPostingId || posting.currencyCode !== source.currencyCode || pool.currencyCode !== source.currencyCode || minor(source.eligibleAmountMinor) <= 0n || minor(source.eligibleAmountMinor) > minor(posting.signedAmountMinor)) throw new Error('INVALID_FUNDING_SOURCE');
+    if(entity(state,'accounts',posting.accountId).budgetPoolId!==pool.id||!entity(state,'accounts',posting.accountId).includeInBudget||sourcesByPosting.get(posting.id)?.length!==1)throw new Error('INVALID_FUNDING_SOURCE_MEMBERSHIP');
+    const reversing=reversalsByPosting.get(posting.id),consumed=sum(sourceEvents(source.id,true).map(event=>event.amountMinor));
+    const unavailable=posting.effectiveLocalDate>='9999-12-31'||Boolean(reversing&&reversing.effectiveLocalDate<'9999-12-31'),remaining=checked((unavailable?0n:minor(source.eligibleAmountMinor))-minor(consumed));
+    if (minor(consumed) < 0n || minor(remaining) < 0n) throw new Error('SOURCE_CAPACITY_EXCEEDED');
+    const events=sourceEvents(source.id).map(event=>({...event}));
     if(reversing)events.push({date:reversing.effectiveLocalDate,amountMinor:'0'});
     assertChronologicalCapacity(events,date=>date<posting.effectiveLocalDate||reversing&&date>=reversing.effectiveLocalDate?0n:minor(source.eligibleAmountMinor),'SOURCE_HISTORICAL_CAPACITY_EXCEEDED');
   }
   for (const app of state.allocationApplications) {
-    const entries = state.allocationEntries.filter(e => e.applicationId === app.id);
+    const entries = entriesByApplication.get(app.id)||[];
     if (!entries.length || sum(entries.map(e => e.signedAmountMinor)) !== '0') throw new Error('UNBALANCED_ALLOCATION');
     requireDate(app.allocationEffectiveLocalDate);
     const consumed = sum(app.sourceConsumption.map(c => { const s = entity(state, 'fundingSources', c.sourceId); if (s.budgetPoolId !== app.budgetPoolId || s.currencyCode !== app.currencyCode) throw new Error('SOURCE_POOL_MISMATCH'); return c.signedAmountMinor; }));
@@ -235,10 +271,11 @@ export function validateSnapshot(state) {
     if (!link.reversalOfLinkId && minor(link.signedAmountMinor) <= 0n || link.effectiveLocalDate < posting.effectiveLocalDate) throw new Error('INVALID_SPEND_LINK_AMOUNT');
   }
   for (const posting of state.postings) {
-    const assigned = BigInt(sum(state.spendLinks.filter(s => s.expensePostingId === posting.id).map(s => s.signedAmountMinor)));
-    if (assigned < 0n || assigned > -minor(posting.signedAmountMinor) && posting.reportingOrigin === 'EXPENSE') throw new Error('SPEND_CAPACITY_EXCEEDED');
-    if(posting.reportingOrigin==='EXPENSE'){
-      const reversing=state.postings.find(p=>p.reversesPostingId===posting.id),events=state.spendLinks.filter(s=>s.expensePostingId===posting.id).map(s=>({date:s.effectiveLocalDate,amountMinor:s.signedAmountMinor}));
+    const links=spendByPosting.get(posting.id)||[],assigned = BigInt(sum(links.map(s => s.signedAmountMinor)));
+    const expenseCapacity = posting.reportingOrigin === 'EXPENSE' && !posting.reversesPostingId ? -minor(posting.signedAmountMinor) : 0n;
+    if (assigned < 0n || assigned > expenseCapacity || reversedPostings.has(posting.id) && assigned !== 0n) throw new Error('SPEND_CAPACITY_EXCEEDED');
+    if(posting.reportingOrigin==='EXPENSE' && !posting.reversesPostingId){
+      const reversing=reversalsByPosting.get(posting.id),events=links.map(s=>({date:s.effectiveLocalDate,amountMinor:s.signedAmountMinor}));
       if(reversing)events.push({date:reversing.effectiveLocalDate,amountMinor:'0'});
       assertChronologicalCapacity(events,date=>date<posting.effectiveLocalDate||reversing&&date>=reversing.effectiveLocalDate?0n:-minor(posting.signedAmountMinor),'SPEND_HISTORICAL_CAPACITY_EXCEEDED');
     }
